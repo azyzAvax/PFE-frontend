@@ -1,0 +1,218 @@
+/* Sign-in page styles */
+.sign-in-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+.sign-in-card {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+}
+
+.sign-in-header h2 {
+  color: #333;
+  margin-bottom: 8px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.sign-in-header p {
+  color: #666;
+  margin-bottom: 32px;
+  font-size: 16px;
+}
+
+.sign-in-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sign-in-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.sign-in-btn.primary {
+  background: #0078d4;
+  color: white;
+}
+
+.sign-in-btn.primary:hover {
+  background: #106ebe;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 120, 212, 0.3);
+}
+
+.sign-in-btn.secondary {
+  background: #f3f2f1;
+  color: #323130;
+  border: 1px solid #d2d0ce;
+}
+
+.sign-in-btn.secondary:hover {
+  background: #edebe9;
+  transform: translateY(-1px);
+}
+
+.sign-in-icon {
+  font-size: 18px;
+}
+
+.sign-in-info {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.4;
+}
+
+/* Profile data styles */
+.profile-data {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  margin-right: 12px;
+}
+
+.profile-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #0078d4;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 14px;
+  color: white;
+}
+
+.profile-email {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.profile-title {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Sign-out button styles */
+.sign-out-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.sign-out-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.sign-out-icon {
+  font-size: 16px;
+}
+
+/* Header authentication section */
+.header-auth {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Loading and error states */
+.auth-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background: #f5f5f5;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #0078d4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.auth-loading p {
+  color: #666;
+  font-size: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.auth-error {
+  color: #d13438;
+  background: #fef7f7;
+  border: 1px solid #fcc;
+  padding: 12px;
+  border-radius: 6px;
+  margin: 12px 0;
+  font-size: 14px;
+} 
+.button-spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #0078d4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 8px;
+  display: inline-block;
+  vertical-align: middle;
+}

@@ -1,0 +1,32 @@
+/* Tabs container */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #eaeaea;
+  margin-bottom: 1.5rem;
+}
+
+/* Individual tab styles */
+.tab {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #555;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+/* Active tab styling */
+.tab.active {
+  color: black;
+  font-weight: bold;
+  border-bottom: 2px solid black;
+}
+
+/* Hover state */
+.tab:hover {
+  color: black;
+  border-bottom: 2px solid #ccc;
+}

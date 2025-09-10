@@ -1,0 +1,22 @@
+body {
+  font-family: Arial, sans-serif;
+  background-color: #f9f9f9;
+  margin: 0;
+  padding: 0;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+h1, h2, h3, label {
+  margin: 0;
+}
+.centered {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
