@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import "../css/DeploymentManager.css";
-import { useGeneratedFiles } from "../hooks/GeneratedFilesContext";
-export default function DeploymentManager() {
+
+export default function DeploymentManager({ generatedFiles }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [expandedFileIndex, setExpandedFileIndex] = useState(null);
   const [isDeploying, setIsDeploying] = useState(false);
@@ -16,8 +16,7 @@ export default function DeploymentManager() {
   const [searchTimeout, setSearchTimeout] = useState(null);
   const [showWorkItemDropdown, setShowWorkItemDropdown] = useState(false);
   const workItemContainerRef = useRef(null);
-  const { generatedFilesContext } = useGeneratedFiles();
-  const generatedFiles = generatedFilesContext;
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {

@@ -1,5 +1,4 @@
-import axios from "axios";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactFlow, {
   addEdge,
   Background,
@@ -12,18 +11,33 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import * as XLSX from "xlsx";
-import CustomNode from "../components/CustomNode";
 import AggregationModal from "../components/AggregationModal";
-import ValidationModal from "../components/ValidationModal";
-import ProcessModal from "../components/ProcessModal";
-import FileUploadSection from "../components/FileUploadSection";
-import SnowpipeMappingSection from "../components/SnowpipeMappingSection";
+import CustomNode from "../components/CustomNode";
 import InputConfigModal from "../components/InputConfigModal";
 import MergeConfigModal from "../components/MergeConfigModal";
+import SnowpipeMappingSection from "../components/SnowpipeMappingSection";
 
+import ProcessModal from "../components/ProcessModal";
+import ValidationModal from "../components/ValidationModal";
+
+function useDebounce(callback, delay) {
+  const timeoutRef = useRef(null);
+  const debouncedFn = useCallback((...args) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => callback(...args), delay);
+  }, [callback, delay]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  return debouncedFn;
+}
 const nodeTypes = {
   default: CustomNode,
-};
+}
 
 const toolboxItems = [
   { type: "input", label: "Input", icon: "📥" },
@@ -32,14 +46,14 @@ const toolboxItems = [
   { type: "validation", label: "Validation", icon: "✓" },
   { type: "merge", label: "Merge", icon: "🔄" },
   { type: "output", label: "Output", icon: "📤" },
-  { type: "aggregation", label: "Aggregator", icon: "🔀" },
+    { type: "aggregation", label: "Aggregator", icon: "🔀" },
 ];
 
 // List of validation subprocedures with their parameters
 const validationSubprocedures = [
   {
     name: "Date Consistency Validation",
-    procedure: "trz_vc_opt.usp_sub_date_consistency_validation",
+    procedure: "usp_sub_date_consistency_validation",
     parameters: [
       {
         name: "master_table",
@@ -66,7 +80,7 @@ const validationSubprocedures = [
   },
   {
     name: "Data Type Validation",
-    procedure: "trz_vc_opt.usp_sub_data_type_validation",
+    procedure: "usp_sub_data_type_validation",
     parameters: [
       { name: "table_name", type: "VARCHAR", description: "Table to validate" },
       {
@@ -88,7 +102,7 @@ const validationSubprocedures = [
   },
   {
     name: "Null Check Validation",
-    procedure: "trz_vc_opt.usp_sub_null_check_validation",
+    procedure: "usp_sub_null_check_validation",
     parameters: [
       { name: "table_name", type: "VARCHAR", description: "Table to validate" },
       {
@@ -108,9 +122,13 @@ const validationSubprocedures = [
 const initialNodes = [];
 const initialEdges = [];
 
-function FlowCanvas({ onCodeGenerated }) {
+function FlowCanvas({ onCodeGenerated ,objectType}) {
   const reactFlowWrapper = useRef(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  // eslint-disable-next-line no-undef
+  useEffect(() => {
+  console.log("Updated Nodes:", nodes);
+}, [nodes]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
   const [draggedNodeId, setDraggedNodeId] = useState(null);
@@ -121,7 +139,7 @@ function FlowCanvas({ onCodeGenerated }) {
   const [inputFieldMap, setInputFieldMap] = useState({});
   const [aggregationFields, setAggregationFields] = useState([]);
   const [groupByFields, setGroupByFields] = useState([]);
-  const [inputType, setInputType] = useState("csv"); // "csv" or "ddl"
+  const [inputType, setInputType] = useState("csv");
   const [tableInfo, setTableInfo] = useState({
     schema: "",
     tableName: "",
@@ -154,23 +172,54 @@ function FlowCanvas({ onCodeGenerated }) {
     additionalSql: "",
     useCte: false,
   });
+  const [generatedPreview, setGeneratedPreview] = useState("");
+  const [isFinalCodeModalOpen, setIsFinalCodeModalOpen] = useState(false);
+  const [finalCode, setFinalCode] = useState("");
+  const [outputNodeId, setOutputNodeId] = useState(null);
+  const [saveStatus, setSaveStatus] = useState('');
+  const saveTimer = useRef(null); 
+
+
+useEffect(() => {
+  if (isFinalCodeModalOpen && outputNodeId) {
+    setSaveStatus(''); // Reset status
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      updateNodeData(outputNodeId, { editedCode: finalCode });
+      setSaveStatus('Saving...');
+      setTimeout(() => setSaveStatus('Saved'), 500);
+    }, 1000); // Debounce auto-save
+  }
+  return () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+  };
+}, [finalCode, isFinalCodeModalOpen, outputNodeId]);
+
+  const parseConstants = (code) => {
+  const consts = {};
+  const regex = /const\s+([a-z_]+)\s*=\s*['"]([^'"]*)['"]\s*;/g;
+  const matches = [...code.matchAll(regex)];
+  matches.forEach((match) => {
+    consts[match[1]] = match[2];
+  });
+  return consts;
+};
+
 
   const updateProcessConfig = (newConfig) => {
     setProcessConfig(newConfig);
-  };
+}
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const updateNodeData = (nodeId, newData) => {
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === nodeId
-          ? { ...node, data: { ...node.data, ...newData } }
-          : node
-      )
-    );
-  };
+  
+const updateNodeData = (nodeId, newData) => {
+  setNodes((nds) =>
+    nds.map((node) =>
+      node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
+    )
+  );
+};
 
   const updateInputCell = (index, value) => {
     const updated = [...inputCells];
@@ -350,8 +399,7 @@ function FlowCanvas({ onCodeGenerated }) {
   const handleHeaderUpload = (e) => {
     const file = e.target.files[0];
     const reader = new FileReader();
-    console.log("first  hereeee");
-    if (!file) return; //
+
     // Check if it's a DDL file (SQL)
     if (inputType === "ddl" && file.name.endsWith(".sql")) {
       reader.onload = (evt) => {
@@ -414,6 +462,244 @@ function FlowCanvas({ onCodeGenerated }) {
     setMappingRules(updated);
   };
 
+  useEffect(() => {
+  if (selectedNode?.data?.nodeType === "output" && isModalOpen) {
+    generatePreview();
+  }
+}, [selectedNode, isModalOpen, objectType, nodes]);
+
+const [editableConsts, setEditableConsts] = useState({});
+
+
+useEffect(() => {
+  if (isFinalCodeModalOpen && objectType === "USP") {
+    const newCode = computePreview(outputNodeId, editableConsts);
+    setFinalCode(newCode);
+  }
+}, [editableConsts, isFinalCodeModalOpen, objectType, outputNodeId, nodes, edges]);
+
+
+const handleTextareaChange = useCallback(
+  (e) => {
+    const newCode = e.target.value;
+    setFinalCode(newCode);
+    try {
+      const { consts, customCode } = parseConstants(newCode);
+      setEditableConsts(consts);
+      const regenerated = computePreview(outputNodeId, consts, customCode);
+      if (regenerated !== newCode && regenerated !== finalCode) {
+        setFinalCode(regenerated);
+      }
+      setError("");
+    } catch (err) {
+      setError(`Error processing code: ${err.message}`);
+      console.error("Error in textarea onChange:", err);
+    }
+  },
+  [outputNodeId, finalCode]
+);
+
+const debouncedHandleTextareaChange = useDebounce(handleTextareaChange, 500);
+
+
+
+const computePreview = (nodeId, overrides = {}) => {
+  const outputNode = nodes.find((node) => node.id === nodeId);
+  if (!outputNode || outputNode.data.nodeType !== "output") return "";
+
+  const attachedNodes = getUpstreamNodes(nodeId);
+  const mergeNode = attachedNodes.find((n) => n?.data?.nodeType === "merge");
+
+  let previewText = "";
+    switch (objectType) {
+      case "USP":
+        if (!mergeNode) {
+        previewText = "Error: No merge node found in the flow.";
+        break;
+        }
+
+        const mergeData = mergeNode.data || {};
+        const mergeConfig = mergeData.mergeConfig || {};
+      const procedureName = mergeData.procedureName || (mergeConfig.targetTable
+          ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : "usp_default");
+      const processId = overrides.process_id || mergeData.processId || (mergeConfig.targetTable
+        ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : "usp_default");
+        const targetTable = overrides.destination_table || mergeConfig.targetTable || "";
+        const targetTableSchema = overrides.destination_table_schema || mergeConfig.targetTableSchema || "";
+        const sourceTable = mergeConfig.sourceTable || "";
+        const targetTemporary = overrides.target_table || (targetTable ? `tmp_${targetTable}` : "");
+        const targetTemporarySchema = overrides.target_table_schema || mergeConfig.targetTableSchema || "";
+        const processSchema = overrides.process_schema || mergeConfig.targetTableSchema || "";
+
+        previewText = `CREATE OR REPLACE PROCEDURE ${procedureName}()\nRETURNS OBJECT\nLANGUAGE JAVASCRIPT\nCOMMENT = '${mergeConfig.comment || "資源価格マスタ_ODSデータ取込"}'\nEXECUTE AS CALLER\nAS $$\ntry {\n`;
+        previewText += `  const target_table = '${targetTemporary}';\n  const target_table_schema = '${targetTemporarySchema}';\n  const destination_table = '${targetTable}';\n  const destination_table_schema = '${targetTableSchema}';\n  const process_id = '${processId}';\n  const process_schema = '${processSchema}';\n`;
+        previewText += "  snowflake.execute({ sqlText: 'BEGIN;' });\n  snowflake.execute({ sqlText: `USE SCHEMA ${destination_table_schema};` });\n  snowflake.execute({ sqlText: 'ALTER SESSION SET TIMEZONE = \"Asia/Tokyo\";' });\n";
+
+        const inputNode = attachedNodes.find((n) => n?.data?.nodeType === "input");
+        if (inputNode) {
+          previewText += `  // Data Extraction from Input\n  snowflake.execute({ sqlText: \`CREATE OR REPLACE TEMPORARY TABLE ${targetTemporarySchema}.${targetTemporary} AS SELECT ${inputNode.data.inputCells?.join(", ") || "*"} FROM ${targetTemporarySchema}.${sourceTable} WHERE METADATA$ACTION = 'INSERT';\` });\n`;
+        }
+
+        const validationNodes = attachedNodes.filter((n) => n?.data?.nodeType === "validation");
+        validationNodes.forEach((node, index) => {
+          const config = node?.data?.validationConfig;
+          if (config) {
+            const procCall = config.customProcedureCall || config.procedureCall;
+            if (procCall) {
+              previewText += `  // Validation Step ${index + 1}\n  snowflake.execute({ sqlText: \`CALL ${processSchema}.${procCall}('${targetTemporary}', '${targetTemporarySchema}', '${targetTable}', '${targetTableSchema}', '${processId}', '${processSchema}'${procCall.includes("duplication") ? ", '[\\\"RES_PRICE_PRODUCT_ID\\\", \\\"APPLY_START_DATE\\\"]'" : ""});\` });\n`;
+            }
+          }
+        });
+
+        if (mergeNode) {
+          let mergeQuery = generateMergeQuery();
+          mergeQuery = mergeQuery.replace(/^CREATE OR REPLACE PROCEDURE .* RETURNS STRING LANGUAGE SQL AS\s*BEGIN\s*/, "").replace(/\s*RETURN.*END;/, "").trim();
+          previewText += `  // Merge Step\n  snowflake.execute({ sqlText: \`${mergeQuery}\` });\n`;
+        }
+
+        previewText += "  snowflake.execute({ sqlText: 'COMMIT;' });\n  return { \"status\": \"SUCCESS\" };\n";
+        previewText += "} catch (err) {\n  snowflake.execute({ sqlText: 'ROLLBACK;' });\n  snowflake.execute({ sqlText: `DROP TABLE ${targetTemporarySchema}.${targetTemporary};` });\n  throw err;\n}\n$$;\n";
+        break;
+
+    case "TABLE":
+      const inputNodeTable = attachedNodes.find((n) => n?.data?.nodeType === "input");
+      const fields = inputNodeTable?.data?.inputCells || [];
+      const tableName = mergeNode?.data?.mergeConfig?.targetTable || "dl_m_bg";
+      const tableSchema = mergeNode?.data?.mergeConfig?.targetTableSchema || "dlz";
+      previewText = `CREATE TABLE IF NOT EXISTS ${tableSchema}.${tableName} (\n`;
+      fields.forEach((field) => {
+        previewText += `  ${field} VARCHAR NULL COMMENT '${field.toUpperCase()}',\n`;
+      });
+      previewText += `  file_name VARCHAR NOT NULL COMMENT 'ファイル名',\n  row_number NUMBER NOT NULL COMMENT '行番号',\n  create_at TIMESTAMP_LTZ(7) NOT NULL COMMENT '作成日時',\n  update_at TIMESTAMP_LTZ(7) NULL COMMENT '更新日時',\n  process_at TIMESTAMP_LTZ(7) NOT NULL COMMENT '処理日時',\n  process_id VARCHAR(255) NOT NULL COMMENT '処理ID',\n  create_by VARCHAR NULL COMMENT '作成者',\n  update_by VARCHAR NULL COMMENT '更新者'\n) COMMENT = '${mergeNode?.data?.mergeConfig?.comment || "BGマスタ"}';\n`;
+      break;
+
+    case "PIPE":
+      const snowpipeNode = attachedNodes.find((n) => n?.data?.nodeType === "Snowpipe");
+      if (!snowpipeNode) {
+        return "Error: No Snowpipe node found in the flow.";
+      }
+      const snowpipeData = snowpipeNode.data || {};
+      const pipeConfig = snowpipeData.snowpipeConfig || {
+        process_id: "",
+        output_table_name: "dl_m_bg",
+        output_table_zone: "dlz",
+        file_format: "fmt_csv_02",
+        pattern_type: "csv",
+        stage_name: "dlz.stg_pv_tosnowflake",
+      };
+      const mappingRules = snowpipeData.mappingRules || [];
+      const aggregationFields = snowpipeData.aggregationFields || [];
+      const groupByFields = snowpipeData.groupByFields || [];
+      
+      // Use pipeConfig for target table/schema, not mergeNode
+      const pipeName = pipeConfig.process_id 
+        ? `${pipeConfig.process_id.replace(/[^a-zA-Z0-9]/g, "_")}` 
+        : "pip_dl_m_bg";
+      const targetTablePipe = pipeConfig.output_table_name || "dl_m_bg";
+      const targetSchemaPipe = pipeConfig.output_table_zone || "dlz";
+      const pipeComment = pipeConfig.comment || mergeNode?.data?.mergeConfig?.comment || "BGマスタ";
+
+      // Validate mappings
+      if (mappingRules.length === 0) {
+        return "Error: No mapping rules defined for Snowpipe.";
+      }
+
+      previewText = `CREATE OR REPLACE PIPE ${targetSchemaPipe}.${pipeName}\n` +
+                    `  INTEGRATION = NTF_INT_EVENTS\n` +
+                    `  AUTO_INGEST = TRUE\n` +
+                    `  COMMENT = '${pipeComment}'\n` +
+                    `  AS\n` +
+                    `  COPY INTO ${targetSchemaPipe}.${targetTablePipe} (\n`;
+
+      // Add output columns
+      mappingRules.forEach((rule) => {
+        if (rule.output_Name) {
+          previewText += `    ${rule.output_Name},\n`;
+        }
+      });
+      previewText += `    file_name,\n` +
+                      `    row_number,\n` +
+                      `    create_at,\n` +
+                      `    update_at,\n` +
+                      `    process_at,\n` +
+                      `    process_id,\n` +
+                      `    create_by,\n` +
+                      `    update_by\n` +
+                      `  )\n` +
+                      `  FROM (\n` +
+                      `    SELECT\n`;
+
+      // Handle aggregations or direct mappings
+      if (aggregationFields.length > 0) {
+        aggregationFields.forEach((agg) => {
+          if (agg.field && agg.function) {
+            const outputName = mappingRules.find((rule) => rule.input_Name === agg.field)?.output_Name || agg.field;
+            previewText += `      ${agg.function}(${agg.field}) AS ${outputName},\n`;
+          }
+        });
+      } else {
+        mappingRules.forEach((rule) => {
+          if (rule.input_Name && rule.output_Name) {
+            previewText += `      t.${rule.input_Name} AS ${rule.output_Name},\n`;
+          }
+        });
+      }
+
+      // Add metadata fields
+      previewText += `      METADATA$FILENAME AS file_name,\n` +
+                      `      METADATA$FILE_ROW_NUMBER AS row_number,\n` +
+                      `      CURRENT_TIMESTAMP() AS create_at,\n` +
+                      `      NULL AS update_at,\n` +
+                      `      CURRENT_TIMESTAMP() AS process_at,\n` +
+                      `      '${pipeConfig.process_id || "PIP_DL_M_BG"}' AS process_id,\n` +
+                      `      t.$5 AS create_by,\n` +
+                      `      t.$6 AS update_by\n` +
+                      `    FROM\n` +
+                      `      @${pipeConfig.stage_name || "dlz.stg_pv_tosnowflake"}/${pipeConfig.output_table_zone || "azurepipeline/dl_m_bg"}/ (\n` +
+                      `        FILE_FORMAT => '${pipeConfig.file_format || "dlz.fmt_csv_02"}',\n` +
+                      `        pattern => '.*[.]${pipeConfig.pattern_type || "csv"}'\n` +
+                      `      ) t\n`;
+
+      // Add GROUP BY if present
+      if (groupByFields.length > 0) {
+        const validGroupByFields = groupByFields.filter((field) => field);
+        if (validGroupByFields.length > 0) {
+          previewText += `    GROUP BY ${validGroupByFields.join(", ")}\n`;
+        }
+      }
+
+      previewText += `  );\n`;
+      break;
+
+    case "UDF":
+      const processNode = attachedNodes.find((n) => n?.data?.nodeType === "process");
+      const processData = processNode?.data || {};
+      const udfConfig = processData.processConfig || {};
+      const udfName = udfConfig.additionalSql 
+        ? `udf_${udfConfig.additionalSql.replace(/[^a-zA-Z0-9]/g, "_")}` 
+        : "udf_convert_datetime_to_koma";
+      const udfSchema = mergeNode?.data?.mergeConfig?.targetTableSchema || "rfz_common";
+      previewText = `CREATE OR REPLACE FUNCTION ${udfSchema}.${udfName} (${udfConfig.params || "target_datetime TIMESTAMP_LTZ(0)"}) \n` +
+                    `RETURNS NUMBER(10,2)\n` +
+                    `COMMENT = '${mergeNode?.data?.mergeConfig?.comment || "日時-コマ変換"}'\n` +
+                    `AS\n` +
+                    `'${udfConfig.additionalSql || "HOUR(CONVERT_TIMEZONE('Asia/Tokyo', target_datetime)) * 2 + IFF(MINUTE(CONVERT_TIMEZONE('Asia/Tokyo', target_datetime)) >= 30, 1, 0) + 1"}';\n`;
+      break;
+
+    default:
+      previewText = "No valid object type selected.";
+  }
+  return previewText;
+};
+
+  const generatePreview = () => {
+  if (!selectedNode || selectedNode.data.nodeType !== "output") return;
+  const previewText = computePreview(selectedNode.id);
+  setGeneratedPreview(previewText);
+};
+
   const onConnect = useCallback(
     (params) => {
       setEdges((eds) => addEdge(params, eds));
@@ -469,7 +755,6 @@ function FlowCanvas({ onCodeGenerated }) {
       setSelectedNode(node);
       setIsModalOpen(true);
       setInputCells(node.data.inputCells || []);
-
       // For input nodes, load input type and table info
       if (node.data.nodeType === "input") {
         setInputType(node.data.inputType || "csv");
@@ -486,7 +771,16 @@ function FlowCanvas({ onCodeGenerated }) {
           });
         }
       }
-
+if (node.data.aggregationFields) {
+  setAggregationFields(node.data.aggregationFields);
+} else {
+  setAggregationFields([]);
+}
+if (node.data.groupByFields) {
+  setGroupByFields(node.data.groupByFields);
+} else {
+  setGroupByFields([]);
+}
       // Load existing mapping rules and config if available
       if (node.data.mappingRules) {
         setMappingRules(node.data.mappingRules);
@@ -520,6 +814,21 @@ function FlowCanvas({ onCodeGenerated }) {
     },
     [nodes, edges]
   );
+const getUpstreamNodes = (nodeId) => {
+    let upstream = [];
+    const traverse = (id) => {
+      const incomingEdges = edges.filter((edge) => edge.target === id);
+      incomingEdges.forEach((edge) => {
+        const sourceNode = nodes.find((n) => n.id === edge.source);
+        if (sourceNode && !upstream.find((n) => n.id === sourceNode.id)) {
+          upstream.push(sourceNode);
+          traverse(sourceNode.id);
+        }
+      });
+    };
+    traverse(nodeId);
+    return upstream;
+  };
 
   const handleValidationProcedureChange = (procedureName) => {
     if (procedureName === "custom") {
@@ -529,6 +838,7 @@ function FlowCanvas({ onCodeGenerated }) {
         parameters: {},
         customProcedureCall: "",
         additionalSql: "",
+      procedureCall: "",
       });
     } else {
       const selectedProc = validationSubprocedures.find(
@@ -542,14 +852,23 @@ function FlowCanvas({ onCodeGenerated }) {
           initialParams[param.name] = "";
         });
 
+      const initialProcedureCall = `${procedureName}(${selectedProc.parameters
+        .map((param) => `${param.name} => ''`)
+        .join(", ")})`;
         setValidationConfig({
           selectedProcedure: procedureName,
           parameters: initialParams,
+        procedureCall: initialProcedureCall,
         });
       }
     }
   };
-
+const handleProcedureCallChange = (e) => {
+  setValidationConfig((prev) => ({
+    ...prev,
+    procedureCall: e.target.value,
+  }));
+};
   const updateValidationParameter = (paramName, value) => {
     setValidationConfig((prev) => ({
       ...prev,
@@ -623,6 +942,7 @@ function FlowCanvas({ onCodeGenerated }) {
     joinType: "INNER",
     useJoin: true,
     whereClause: "",
+      previewMergeQuery: "",
   });
 
   const [customValues, setCustomValues] = useState({
@@ -632,7 +952,7 @@ function FlowCanvas({ onCodeGenerated }) {
 
   const handleMergeChange = (e) => {
     const { name, value } = e.target;
-    setMergeConfig((prev) => ({ ...prev, [name]: value }));
+      setMergeConfig((prev) => ({ ...prev, [name]: value, }));
   };
 
   const handleToggleField = (fieldType, field) => {
@@ -676,11 +996,33 @@ function FlowCanvas({ onCodeGenerated }) {
   };
 
   const saveMergeConfig = () => {
-    if (selectedNode) {
-      updateNodeData(selectedNode.id, { mergeConfig });
-      setIsModalOpen(false);
-    }
-  };
+  if (selectedNode) {
+    const procedureName = mergeConfig.targetTable
+      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+      : "usp_default";
+    const processId = mergeConfig.targetTable
+      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+      : "usp_default";
+    const savedData = {
+      mergeConfig: { ...mergeConfig },
+      procedureName,
+      processId,
+    };
+     updateNodeData(selectedNode.id, {
+      mergeConfig: { ...mergeConfig },
+      processId,
+    });    // debugging
+    //console.log("Saved Merge Node Data:", savedData);
+    setMergeConfig((prev) => ({
+      ...prev,
+      previewMergeQuery: generateMergeQuery(),
+    }));
+    setIsModalOpen(false);
+  } else {
+    console.error("No selected node available to save merge config.");
+  }
+  
+};
 
   const generateMergeQuery = () => {
     const currentDate = new Date().toLocaleString("en-US", {
@@ -691,16 +1033,16 @@ function FlowCanvas({ onCodeGenerated }) {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    }); // e.g., "07/04/2025, 09:46"
+    });
 
-    // Define availableFields, processId, procedureName, and sourceQueryTemplate here to avoid ReferenceError
+    // Define availableFields, processId, procedureName, and sourceQueryTemplate
     const availableFields = getConnectedInputFields(selectedNode?.id) || [];
     const processId = mergeConfig.targetTable
-      ? `proc_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}_v1`
+      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
       : "";
     const procedureName = mergeConfig.targetTable
-      ? `usp_merge_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-      : "usp_merge_default";
+      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+      : "usp_default";
     const sourceQueryTemplate = mergeConfig.useCte
       ? `WITH temp1 AS (SELECT ${availableFields.join(", ") || "*"} FROM ${
           mergeConfig.sourceTable || "<sourceTable>"
@@ -752,7 +1094,7 @@ function FlowCanvas({ onCodeGenerated }) {
           ? [`target.process_id = '${processId}'`]
           : []
       )
-      .join(", ");
+      .join(", "); 
 
     const notMatchedInsertsStr = mergeConfig.notMatchedInserts
       .map((field) => field)
@@ -788,26 +1130,21 @@ function FlowCanvas({ onCodeGenerated }) {
       )
       .join(", ");
 
-    return `CREATE OR REPLACE PROCEDURE ${procedureName}() RETURNS STRING LANGUAGE SQL AS
-BEGIN
+    return `
 MERGE INTO ${mergeConfig.targetTable || "targetTable"} AS target
 USING (${sourceQuery}) AS source
 ${onClause}
-${matchedUpdatesStr ? "WHEN MATCHED THEN UPDATE SET ${matchedUpdatesStr} " : ""}
-${
-  notMatchedInsertsStr
-    ? "WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr}) VALUES (${notMatchedValuesStr})"
-    : ""
-};
-RETURN "status": "SUCCESS";
-END;`;
+${matchedUpdatesStr ? `WHEN MATCHED THEN UPDATE SET ${matchedUpdatesStr} ` : ""}
+${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr}) VALUES (${notMatchedValuesStr})` : ""};
+`;
   };
 
   const renderModalContent = () => {
     if (!selectedNode) return null;
     switch (selectedNode.data.nodeType) {
       case "input":
-        return (
+  // Handle changes to input cells (for CSV mode)
+  return (
           <InputConfigModal
             setInputCells={setInputCells}
             inputType={inputType}
@@ -822,7 +1159,7 @@ END;`;
           />
         );
       case "Snowpipe":
-        return (
+              return (
           <SnowpipeMappingSection
             snowpipeConfig={snowpipeConfig}
             setSnowpipeConfig={setSnowpipeConfig}
@@ -834,14 +1171,15 @@ END;`;
           />
         );
 
+
       case "merge":
         const availableFields = getConnectedInputFields(selectedNode.id) || [];
         const processId = mergeConfig.targetTable
-          ? `proc_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}_v1`
+          ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
           : "";
         const procedureName = mergeConfig.targetTable
-          ? `usp_merge_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-          : "usp_merge_default";
+          ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+          : "usp_default";
         const sourceQueryTemplate = mergeConfig.useCte
           ? `WITH temp1 AS (SELECT ${
               availableFields.length > 0 ? availableFields.join(", ") : "*"
@@ -851,8 +1189,23 @@ END;`;
           : `SELECT ${
               availableFields.length > 0 ? availableFields.join(", ") : "*"
             } FROM ${mergeConfig.sourceTable || "<sourceTable>"}`;
+          
+            const saveMergeConfig = () => {
+  if (selectedNode) {
+    updateNodeData(selectedNode.id, {
+      mergeConfig: { ...mergeConfig },
+      processId,
+    });
+    console.log("Saved Merge Data:", {
+      mergeConfig: { ...mergeConfig },
+      procedureName,
+      processId,
+    });
+    setIsModalOpen(false);
+  }
+};
         return (
-          <MergeConfigModal
+                    <MergeConfigModal
             mergeConfig={mergeConfig}
             setMergeConfig={setMergeConfig}
             selectedNode={selectedNode}
@@ -871,855 +1224,6 @@ END;`;
             saveMergeConfig={saveMergeConfig}
             setIsModalOpen={setIsModalOpen}
           />
-          // <>
-          //   <div
-          //     style={{
-          //       background: "#f8fafc",
-          //       padding: "15px",
-          //       borderRadius: "8px",
-          //       marginBottom: "25px",
-          //       border: "1px solid #e2e8f0",
-          //     }}
-          //   >
-          //     <h4
-          //       style={{
-          //         margin: "0 0 15px 0",
-          //         fontSize: "16px",
-          //         color: "#1e293b",
-          //         display: "flex",
-          //         alignItems: "center",
-          //       }}
-          //     >
-          //       <span style={{ marginRight: "8px", fontSize: "18px" }}>🔄</span>
-          //       Merge Configuration
-          //     </h4>
-          //     <div style={{ display: "grid", gap: 15 }}>
-          //       {/* Target Table */}
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           Target Table
-          //         </label>
-          //         <input
-          //           name="targetTable"
-          //           value={mergeConfig.targetTable}
-          //           onChange={handleMergeChange}
-          //           placeholder="e.g., rfz_ope_and_mte.dm_m_cams_coal_ash_ship_dist"
-          //           style={{
-          //             width: "100%",
-          //             padding: "10px",
-          //             borderRadius: "6px",
-          //             border: "1px solid #cbd5e1",
-          //             fontSize: "14px",
-          //           }}
-          //         />
-          //       </div>
-          //       {/* Source Table */}
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           Source Table
-          //         </label>
-          //         <input
-          //           name="sourceTable"
-          //           value={mergeConfig.sourceTable}
-          //           onChange={handleMergeChange}
-          //           placeholder="e.g., trz_ope_and_mte.str_od_m_cams_coal_ash_ship_dist_01"
-          //           style={{
-          //             width: "100%",
-          //             padding: "10px",
-          //             borderRadius: "6px",
-          //             border: "1px solid #cbd5e1",
-          //             fontSize: "14px",
-          //           }}
-          //         />
-          //       </div>
-          //       {/* Source Query */}
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           Source Query
-          //         </label>
-          //         <textarea
-          //           name="sourceQuery"
-          //           value={mergeConfig.sourceQuery || sourceQueryTemplate}
-          //           onChange={handleMergeChange}
-          //           style={{
-          //             width: "100%",
-          //             padding: "10px",
-          //             borderRadius: "6px",
-          //             border: "1px solid #cbd5e1",
-          //             fontSize: "14px",
-          //             minHeight: "100px",
-          //           }}
-          //         />
-          //         <label
-          //           style={{
-          //             marginTop: "5px",
-          //             fontSize: "12px",
-          //             color: "#64748b",
-          //           }}
-          //         >
-          //           <input
-          //             type="checkbox"
-          //             checked={mergeConfig.useCte}
-          //             onChange={(e) =>
-          //               setMergeConfig((prev) => ({
-          //                 ...prev,
-          //                 useCte: e.target.checked,
-          //               }))
-          //             }
-          //           />{" "}
-          //           Use CTE
-          //         </label>
-          //       </div>
-          //       {/* Join Conditions */}
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           Join Conditions
-          //         </label>
-          //         <div
-          //           style={{
-          //             border: "1px solid #cbd5e1",
-          //             borderRadius: "6px",
-          //             padding: "10px",
-          //             maxHeight: "250px", // Increased height to accommodate WHERE
-          //             overflowY: "auto",
-          //             backgroundColor: "#fff",
-          //           }}
-          //         >
-          //           <div style={{ marginBottom: "10px" }}>
-          //             <label
-          //               style={{
-          //                 display: "flex",
-          //                 alignItems: "center",
-          //                 gap: "8px",
-          //               }}
-          //             >
-          //               <input
-          //                 type="checkbox"
-          //                 checked={mergeConfig.useJoin || false}
-          //                 onChange={(e) =>
-          //                   setMergeConfig((prev) => ({
-          //                     ...prev,
-          //                     useJoin: e.target.checked,
-          //                   }))
-          //                 }
-          //                 style={{ marginRight: "5px" }}
-          //               />
-          //               Include Join Conditions
-          //             </label>
-          //           </div>
-
-          //           {mergeConfig.useJoin && (
-          //             <div>
-          //               <div style={{ marginBottom: "10px" }}>
-          //                 <label
-          //                   style={{
-          //                     display: "block",
-          //                     marginBottom: "6px",
-          //                     fontSize: "14px",
-          //                     fontWeight: 500,
-          //                     color: "#334155",
-          //                   }}
-          //                 >
-          //                   Join Type
-          //                 </label>
-          //                 <select
-          //                   value={mergeConfig.joinType || "INNER"}
-          //                   onChange={(e) =>
-          //                     setMergeConfig((prev) => ({
-          //                       ...prev,
-          //                       joinType: e.target.value,
-          //                     }))
-          //                   }
-          //                   style={{
-          //                     width: "100%",
-          //                     padding: "8px",
-          //                     borderRadius: "6px",
-          //                     border: "1px solid #cbd5e1",
-          //                     fontSize: "14px",
-          //                   }}
-          //                 >
-          //                   <option value="INNER">INNER</option>
-          //                   <option value="LEFT">LEFT</option>
-          //                   <option value="RIGHT">RIGHT</option>
-          //                   <option value="FULL">FULL</option>
-          //                 </select>
-          //               </div>
-
-          //               {mergeConfig.joinConditions.map((cond, index) => (
-          //                 <div
-          //                   key={index}
-          //                   style={{
-          //                     marginBottom: "10px",
-          //                     display: "flex",
-          //                     gap: "10px",
-          //                     alignItems: "center",
-          //                   }}
-          //                 >
-          //                   {index === 0 && (
-          //                     <span style={{ alignSelf: "center" }}>ON</span>
-          //                   )}
-          //                   <select
-          //                     value={cond.field}
-          //                     onChange={(e) =>
-          //                       updateJoinCondition(
-          //                         index,
-          //                         "field",
-          //                         e.target.value
-          //                       )
-          //                     }
-          //                     style={{
-          //                       padding: "8px",
-          //                       borderRadius: "6px",
-          //                       border: "1px solid #cbd5e1",
-          //                       flex: 1,
-          //                     }}
-          //                   >
-          //                     <option value="">-- Select Field --</option>
-          //                     {availableFields.map((field) => (
-          //                       <option key={field} value={field}>
-          //                         {field}
-          //                       </option>
-          //                     ))}
-          //                   </select>
-          //                   <select
-          //                     value={cond.operator}
-          //                     onChange={(e) =>
-          //                       updateJoinCondition(
-          //                         index,
-          //                         "operator",
-          //                         e.target.value
-          //                       )
-          //                     }
-          //                     style={{
-          //                       padding: "8px",
-          //                       borderRadius: "6px",
-          //                       border: "1px solid #cbd5e1",
-          //                     }}
-          //                   >
-          //                     <option value="=">=</option>
-          //                     <option value="!=">!=</option>
-          //                     <option value=">">{">"}</option>
-          //                     <option value="<">{"<"}</option>
-          //                   </select>
-          //                   <input
-          //                     value={cond.value}
-          //                     onChange={(e) =>
-          //                       updateJoinCondition(
-          //                         index,
-          //                         "value",
-          //                         e.target.value
-          //                       )
-          //                     }
-          //                     placeholder="Value or Field"
-          //                     style={{
-          //                       padding: "8px",
-          //                       borderRadius: "6px",
-          //                       border: "1px solid #cbd5e1",
-          //                       flex: 1,
-          //                     }}
-          //                   />
-          //                   {index > 0 && (
-          //                     <select
-          //                       value={cond.connector}
-          //                       onChange={(e) =>
-          //                         updateJoinCondition(
-          //                           index,
-          //                           "connector",
-          //                           e.target.value
-          //                         )
-          //                       }
-          //                       style={{
-          //                         padding: "8px",
-          //                         borderRadius: "6px",
-          //                         border: "1px solid #cbd5e1",
-          //                       }}
-          //                     >
-          //                       <option value="AND">AND</option>
-          //                       <option value="OR">OR</option>
-          //                     </select>
-          //                   )}
-          //                   <button
-          //                     onClick={() => removeJoinCondition(index)}
-          //                     style={{
-          //                       padding: "8px",
-          //                       background: "#ef4444",
-          //                       color: "white",
-          //                       border: "none",
-          //                       borderRadius: "6px",
-          //                     }}
-          //                   >
-          //                     ✕
-          //                   </button>
-          //                 </div>
-          //               ))}
-          //               <button
-          //                 onClick={addJoinCondition}
-          //                 style={{
-          //                   padding: "8px 12px",
-          //                   background: "#10b981",
-          //                   color: "white",
-          //                   border: "none",
-          //                   borderRadius: "6px",
-          //                   marginTop: "5px",
-          //                 }}
-          //               >
-          //                 Add Condition
-          //               </button>
-          //             </div>
-          //           )}
-
-          //           <div style={{ marginTop: "15px" }}>
-          //             <label
-          //               style={{
-          //                 display: "block",
-          //                 marginBottom: "6px",
-          //                 fontSize: "14px",
-          //                 fontWeight: 500,
-          //                 color: "#334155",
-          //               }}
-          //             >
-          //               WHERE Clause (Optional)
-          //             </label>
-          //             <textarea
-          //               value={mergeConfig.whereClause || ""}
-          //               onChange={(e) =>
-          //                 setMergeConfig((prev) => ({
-          //                   ...prev,
-          //                   whereClause: e.target.value,
-          //                 }))
-          //               }
-          //               placeholder="Enter WHERE clause (e.g., LENGTH(kks_ext_code) = 3 AND system_status_class = 'ACTIVE')"
-          //               style={{
-          //                 width: "100%",
-          //                 minHeight: "80px",
-          //                 padding: "10px",
-          //                 borderRadius: "6px",
-          //                 border: "1px solid #cbd5e1",
-          //                 fontFamily: "monospace",
-          //                 fontSize: "13px",
-          //                 backgroundColor: "#fff",
-          //                 color: "#334155",
-          //               }}
-          //             />
-          //             <div
-          //               style={{
-          //                 fontSize: "12px",
-          //                 color: "#64748b",
-          //                 marginTop: "5px",
-          //               }}
-          //             >
-          //               Optional: Add custom WHERE conditions for the source
-          //               query.
-          //             </div>
-          //           </div>
-          //         </div>
-          //       </div>
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           WHEN MATCHED Updates
-          //         </label>
-          //         <div
-          //           style={{
-          //             border: "1px solid #cbd5e1",
-          //             borderRadius: "6px",
-          //             padding: "10px",
-          //             maxHeight: "150px",
-          //             overflowY: "auto",
-          //             backgroundColor: "#fff",
-          //           }}
-          //         >
-          //           {availableFields.length > 0 ? (
-          //             <>
-          //               <label
-          //                 style={{ display: "block", marginBottom: "5px" }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={
-          //                     availableFields.every((field) =>
-          //                       mergeConfig.matchedUpdates.includes(field)
-          //                     ) &&
-          //                     mergeConfig.matchedUpdates.includes(
-          //                       "update_at"
-          //                     ) &&
-          //                     mergeConfig.matchedUpdates.includes("process_id")
-          //                   }
-          //                   onChange={(e) => {
-          //                     const allFields = [
-          //                       ...availableFields,
-          //                       "update_at",
-          //                       "process_id",
-          //                     ];
-          //                     setMergeConfig((prev) => ({
-          //                       ...prev,
-          //                       matchedUpdates: e.target.checked
-          //                         ? allFields
-          //                         : [],
-          //                     }));
-          //                   }}
-          //                 />{" "}
-          //                 Select All
-          //               </label>
-          //               {availableFields.map((field, index) => (
-          //                 <div
-          //                   key={index}
-          //                   style={{
-          //                     marginBottom: "5px",
-          //                     display: "flex",
-          //                     alignItems: "center",
-          //                     gap: "10px",
-          //                   }}
-          //                 >
-          //                   <input
-          //                     type="checkbox"
-          //                     checked={mergeConfig.matchedUpdates.includes(
-          //                       field
-          //                     )}
-          //                     onChange={() =>
-          //                       handleToggleField("matchedUpdates", field)
-          //                     }
-          //                   />{" "}
-          //                   <span>
-          //                     target.{field} = source.{field}
-          //                   </span>
-          //                   <input
-          //                     value={customValues.matchedUpdates[field] || ""}
-          //                     onChange={(e) =>
-          //                       handleCustomValueChange(
-          //                         "matchedUpdates",
-          //                         field,
-          //                         e.target.value
-          //                       )
-          //                     }
-          //                     placeholder="Custom Value"
-          //                     style={{
-          //                       padding: "6px",
-          //                       borderRadius: "6px",
-          //                       border: "1px solid #cbd5e1",
-          //                       flex: 1,
-          //                     }}
-          //                   />
-          //                 </div>
-          //               ))}
-          //               <div
-          //                 style={{
-          //                   marginBottom: "5px",
-          //                   display: "flex",
-          //                   alignItems: "center",
-          //                   gap: "10px",
-          //                 }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={mergeConfig.matchedUpdates.includes(
-          //                     "update_at"
-          //                   )}
-          //                   onChange={() =>
-          //                     handleToggleField("matchedUpdates", "update_at")
-          //                   }
-          //                 />{" "}
-          //                 <span>update_at = CURRENT_TIMESTAMP()</span>
-          //                 <input
-          //                   value={
-          //                     customValues.matchedUpdates["update_at"] || ""
-          //                   }
-          //                   onChange={(e) =>
-          //                     handleCustomValueChange(
-          //                       "matchedUpdates",
-          //                       "update_at",
-          //                       e.target.value
-          //                     )
-          //                   }
-          //                   placeholder="Custom Value"
-          //                   style={{
-          //                     padding: "6px",
-          //                     borderRadius: "6px",
-          //                     border: "1px solid #cbd5e1",
-          //                     flex: 1,
-          //                   }}
-          //                 />
-          //               </div>
-          //               <div
-          //                 style={{
-          //                   marginBottom: "5px",
-          //                   display: "flex",
-          //                   alignItems: "center",
-          //                   gap: "10px",
-          //                 }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={mergeConfig.matchedUpdates.includes(
-          //                     "process_id"
-          //                   )}
-          //                   onChange={() =>
-          //                     handleToggleField("matchedUpdates", "process_id")
-          //                   }
-          //                 />{" "}
-          //                 <span>process_id = '{processId}'</span>
-          //                 <input
-          //                   value={
-          //                     customValues.matchedUpdates["process_id"] || ""
-          //                   }
-          //                   onChange={(e) =>
-          //                     handleCustomValueChange(
-          //                       "matchedUpdates",
-          //                       "process_id",
-          //                       e.target.value
-          //                     )
-          //                   }
-          //                   placeholder="Custom Value"
-          //                   style={{
-          //                     padding: "6px",
-          //                     borderRadius: "6px",
-          //                     border: "1px solid #cbd5e1",
-          //                     flex: 1,
-          //                   }}
-          //                 />
-          //               </div>
-          //             </>
-          //           ) : (
-          //             <div style={{ color: "#ef4444", fontSize: "12px" }}>
-          //               No fields available. Connect an input node to enable
-          //               field selection.
-          //             </div>
-          //           )}
-          //         </div>
-          //       </div>
-          //       {/* WHEN NOT MATCHED Inserts */}
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           WHEN NOT MATCHED Inserts
-          //         </label>
-          //         <div
-          //           style={{
-          //             border: "1px solid #cbd5e1",
-          //             borderRadius: "6px",
-          //             padding: "10px",
-          //             maxHeight: "150px",
-          //             overflowY: "auto",
-          //             backgroundColor: "#fff",
-          //           }}
-          //         >
-          //           {availableFields.length > 0 ? (
-          //             <>
-          //               <label
-          //                 style={{ display: "block", marginBottom: "5px" }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={
-          //                     availableFields.every((field) =>
-          //                       mergeConfig.notMatchedInserts.includes(field)
-          //                     ) &&
-          //                     mergeConfig.notMatchedInserts.includes(
-          //                       "create_at"
-          //                     ) &&
-          //                     mergeConfig.notMatchedInserts.includes(
-          //                       "process_at"
-          //                     ) &&
-          //                     mergeConfig.notMatchedInserts.includes(
-          //                       "process_id"
-          //                     )
-          //                   }
-          //                   onChange={(e) => {
-          //                     const allFields = [
-          //                       ...availableFields,
-          //                       "create_at",
-          //                       "process_at",
-          //                       "process_id",
-          //                     ];
-          //                     setMergeConfig((prev) => ({
-          //                       ...prev,
-          //                       notMatchedInserts: e.target.checked
-          //                         ? allFields
-          //                         : [],
-          //                     }));
-          //                   }}
-          //                 />{" "}
-          //                 Select All
-          //               </label>
-          //               {availableFields.map((field, index) => (
-          //                 <div
-          //                   key={index}
-          //                   style={{
-          //                     marginBottom: "5px",
-          //                     display: "flex",
-          //                     alignItems: "center",
-          //                     gap: "10px",
-          //                   }}
-          //                 >
-          //                   <input
-          //                     type="checkbox"
-          //                     checked={mergeConfig.notMatchedInserts.includes(
-          //                       field
-          //                     )}
-          //                     onChange={() =>
-          //                       handleToggleField("notMatchedInserts", field)
-          //                     }
-          //                   />{" "}
-          //                   <span>{field}</span>
-          //                   <input
-          //                     value={
-          //                       customValues.notMatchedInserts[field] || ""
-          //                     }
-          //                     onChange={(e) =>
-          //                       handleCustomValueChange(
-          //                         "notMatchedInserts",
-          //                         field,
-          //                         e.target.value
-          //                       )
-          //                     }
-          //                     placeholder="Custom Value"
-          //                     style={{
-          //                       padding: "6px",
-          //                       borderRadius: "6px",
-          //                       border: "1px solid #cbd5e1",
-          //                       flex: 1,
-          //                     }}
-          //                   />
-          //                 </div>
-          //               ))}
-          //               <div
-          //                 style={{
-          //                   marginBottom: "5px",
-          //                   display: "flex",
-          //                   alignItems: "center",
-          //                   gap: "10px",
-          //                 }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={mergeConfig.notMatchedInserts.includes(
-          //                     "create_at"
-          //                   )}
-          //                   onChange={() =>
-          //                     handleToggleField(
-          //                       "notMatchedInserts",
-          //                       "create_at"
-          //                     )
-          //                   }
-          //                 />{" "}
-          //                 <span>create_at = CURRENT_TIMESTAMP()</span>
-          //                 <input
-          //                   value={
-          //                     customValues.notMatchedInserts["create_at"] || ""
-          //                   }
-          //                   onChange={(e) =>
-          //                     handleCustomValueChange(
-          //                       "notMatchedInserts",
-          //                       "create_at",
-          //                       e.target.value
-          //                     )
-          //                   }
-          //                   placeholder="Custom Value"
-          //                   style={{
-          //                     padding: "6px",
-          //                     borderRadius: "6px",
-          //                     border: "1px solid #cbd5e1",
-          //                     flex: 1,
-          //                   }}
-          //                 />
-          //               </div>
-          //               <div
-          //                 style={{
-          //                   marginBottom: "5px",
-          //                   display: "flex",
-          //                   alignItems: "center",
-          //                   gap: "10px",
-          //                 }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={mergeConfig.notMatchedInserts.includes(
-          //                     "process_at"
-          //                   )}
-          //                   onChange={() =>
-          //                     handleToggleField(
-          //                       "notMatchedInserts",
-          //                       "process_at"
-          //                     )
-          //                   }
-          //                 />{" "}
-          //                 <span>process_at = CURRENT_TIMESTAMP()</span>
-          //                 <input
-          //                   value={
-          //                     customValues.notMatchedInserts["process_at"] || ""
-          //                   }
-          //                   onChange={(e) =>
-          //                     handleCustomValueChange(
-          //                       "notMatchedInserts",
-          //                       "process_at",
-          //                       e.target.value
-          //                     )
-          //                   }
-          //                   placeholder="Custom Value"
-          //                   style={{
-          //                     padding: "6px",
-          //                     borderRadius: "6px",
-          //                     border: "1px solid #cbd5e1",
-          //                     flex: 1,
-          //                   }}
-          //                 />
-          //               </div>
-          //               <div
-          //                 style={{
-          //                   marginBottom: "5px",
-          //                   display: "flex",
-          //                   alignItems: "center",
-          //                   gap: "10px",
-          //                 }}
-          //               >
-          //                 <input
-          //                   type="checkbox"
-          //                   checked={mergeConfig.notMatchedInserts.includes(
-          //                     "process_id"
-          //                   )}
-          //                   onChange={() =>
-          //                     handleToggleField(
-          //                       "notMatchedInserts",
-          //                       "process_id"
-          //                     )
-          //                   }
-          //                 />{" "}
-          //                 <span>process_id = '{processId}'</span>
-          //                 <input
-          //                   value={
-          //                     customValues.notMatchedInserts["process_id"] || ""
-          //                   }
-          //                   onChange={(e) =>
-          //                     handleCustomValueChange(
-          //                       "notMatchedInserts",
-          //                       "process_id",
-          //                       e.target.value
-          //                     )
-          //                   }
-          //                   placeholder="Custom Value"
-          //                   style={{
-          //                     padding: "6px",
-          //                     borderRadius: "6px",
-          //                     border: "1px solid #cbd5e1",
-          //                     flex: 1,
-          //                   }}
-          //                 />
-          //               </div>
-          //             </>
-          //           ) : (
-          //             <div style={{ color: "#ef4444", fontSize: "12px" }}>
-          //               No fields available. Connect an input node to enable
-          //               field selection.
-          //             </div>
-          //           )}
-          //         </div>
-          //       </div>
-          //       {/* Preview Merge Query */}
-          //       <div>
-          //         <label
-          //           style={{
-          //             display: "block",
-          //             marginBottom: "6px",
-          //             fontSize: "14px",
-          //             fontWeight: 500,
-          //             color: "#334155",
-          //           }}
-          //         >
-          //           Preview Merge Query
-          //         </label>
-          //         <textarea
-          //           value={generateMergeQuery()}
-          //           readOnly
-          //           style={{
-          //             width: "100%",
-          //             padding: "10px",
-          //             borderRadius: "6px",
-          //             border: "1px solid #cbd5e1",
-          //             fontSize: "14px",
-          //             minHeight: "150px",
-          //             background: "#f1f5f9",
-          //           }}
-          //         />
-          //       </div>
-          //       {/* Save/Cancel Buttons */}
-          //       <div style={{ display: "flex", gap: 10 }}>
-          //         <button
-          //           onClick={saveMergeConfig}
-          //           style={{
-          //             padding: "10px 20px",
-          //             background: "#10b981",
-          //             color: "white",
-          //             border: "none",
-          //             borderRadius: "6px",
-          //             cursor: "pointer",
-          //             fontWeight: 500,
-          //           }}
-          //         >
-          //           Save
-          //         </button>
-          //         <button
-          //           onClick={() => setIsModalOpen(false)}
-          //           style={{
-          //             padding: "10px 20px",
-          //             background: "#f1f5f9",
-          //             border: "1px solid #cbd5e1",
-          //             borderRadius: "6px",
-          //             cursor: "pointer",
-          //             fontWeight: 500,
-          //           }}
-          //         >
-          //           Cancel
-          //         </button>
-          //       </div>
-          //     </div>
-          //   </div>
-          // </>
         );
 
       case "process":
@@ -1745,136 +1249,235 @@ END;`;
         return (
           <AggregationModal selectedNode={selectedNode} setNodes={setNodes} />
         );
+      case "output":
+  const attachedNodes = getUpstreamNodes(selectedNode.id);
+  return (
+    <>
+    <div
+      style={{
+        background: "#f0f9ff",
+        padding: "15px",
+        borderRadius: "8px",
+        marginBottom: "20px",
+        border: "1px solid #bae6fd",
+      }}
+    >
+      <h4
+        style={{
+          margin: "0 0 15px 0",
+          fontSize: "16px",
+          color: "#0369a1",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <span style={{ marginRight: "8px", fontSize: "18px" }}>
+          📤
+        </span>
+        Output Preview
+      </h4>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+        <div>
+          <label
+            style={{
+              display: "block",
+              marginBottom: "6px",
+              fontSize: "14px",
+              fontWeight: 500,
+              color: "#334155",
+            }}
+          >
+            Attached Nodes
+          </label>
+          <div
+            style={{
+              padding: "10px",
+              border: "1px solid #cbd5e1",
+              borderRadius: "6px",
+              minHeight: "100px",
+              backgroundColor: "#f8fafc",
+              color: "#334155",
+              fontSize: "14px",
+              overflowY: "auto",
+            }}
+          >
+            {attachedNodes.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                {attachedNodes.map((node, index) => (
+                    <li key={index}>
+                      {node.data.nodeType} Node
+                    </li>
+                ))}
+              </ul>
+            ) : (
+                <p>No nodes attached yet. Attach input, Snowpipe, process, validation, or merge nodes.</p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label
+            style={{
+              display: "block",
+              marginBottom: "6px",
+              fontSize: "14px",
+              fontWeight: 500,
+              color: "#334155",
+            }}
+          >
+            Generated Object Preview
+          </label>
+          <textarea
+              value={generatedPreview}
+              readOnly={true}
+              placeholder="Generated SQL preview will appear here..."
+            style={{
+              width: "100%",
+              minHeight: "200px",
+              padding: "10px",
+              borderRadius: "6px",
+              border: "1px solid #cbd5e1",
+              fontSize: "14px",
+              fontFamily: "monospace",
+              backgroundColor: "#f8fafc",
+              color: "#334155",
+              resize: "vertical",
+                cursor: "not-allowed",
+            }}
+          />
+          <button
+            onClick={generatePreview}
+            style={{
+              marginTop: "10px",
+              padding: "8px 16px",
+              background: "#10b981",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            Generate Preview
+          </button>
+        </div>
+      </div>
+    </div>
+    </>
+  );
+        
       default:
         return <p>No modal for this type.</p>;
     }
   };
 
   const saveNodeData = () => {
-    if (selectedNode) {
-      const nodeData = { inputCells };
+  if (!selectedNode) {
+    console.error("No selected node available to save data.");
+    return;
+  }
+  let procedureName = "usp_default";
+  let processId = "usp_default";
+  if (selectedNode.data.nodeType === "merge") {
+    procedureName = mergeConfig.targetTable
+      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+      : "usp_default";
+    processId = mergeConfig.targetTable
+      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+      : "usp_default";
+  }
 
-      // Save mapping rules and Snowpipe config for Snowpipe nodes
-      if (selectedNode.data.nodeType === "Snowpipe") {
-        nodeData.mappingRules = mappingRules;
-        nodeData.snowpipeConfig = snowpipeConfig;
-      }
+  switch (selectedNode.data.nodeType) {
+  case "input":
+    // Assume inputCells is the state variable holding the updated columns
+    const updated = inputCells || []; // Default to empty array if undefined
+    updateNodeData(selectedNode.id, {
+      inputCells: updated,
+      outputs: { columns: updated, process_id: inputFieldMap.process_id, output_table_name: inputFieldMap.output_table_name, output_table_zone: inputFieldMap.output_table_zone },
+    });
+    break;
 
-      // Save validation config for validation nodes
-      if (selectedNode.data.nodeType === "validation") {
-        nodeData.validationConfig = validationConfig;
-      }
+  case "Snowpipe":
+    updateNodeData(selectedNode.id, {
+      snowpipeConfig,
+      mappingRules,
+      aggregationFields,
+      groupByFields,
+    });
+    break;
 
-      updateNodeData(selectedNode.id, nodeData);
-    }
-    setIsModalOpen(false);
-  };
+  case "validation":
+    updateNodeData(selectedNode.id, {
+      validationConfig,
+      outputs: { parameters: validationConfig.parameters },
+    });
+    break;
 
+  case "merge":
+    updateNodeData(selectedNode.id, {
+      mergeConfig,
+      outputs: { mergedColumns: mergeConfig.columns, process_id: mergeConfig.process_id, output_table_name: mergeConfig.targetTable, output_table_zone: mergeConfig.targetZone },
+    });
+    break;
+
+  case "output":
+    // Save the current generated preview when closing the output config modal
+    updateNodeData(selectedNode.id, { generatedPreview });
+    break;
+
+  default:
+    console.warn(`No save logic defined for node type: ${selectedNode.data.nodeType}`);
+}
+setIsModalOpen(false);
+};
+
+  const isValidConnection = (connection) => {
+    const sourceNode = nodes.find((node) => node.id === connection.source);
+    const targetNode = nodes.find((node) => node.id === connection.target);
+    if (!sourceNode || !targetNode) return false;
+  // Allow any node to connect to any other node
+      return true;
+};
   const handleGenerateCode = async () => {
-    if (!nodes.length) {
-      setError("Please add at least one node to the flow");
-      return;
+  if (!nodes.length) {
+    setError("Please add at least one node to the flow");
+    return;
+  }
+
+  setLoading(true);
+  setError("");
+
+  try {
+    const outputNode = nodes.find((node) => node.data.nodeType === "output");
+    if (!outputNode) {
+      throw new Error("Please add an output node to the flow");
     }
 
-    setLoading(true);
-    setError("");
+    setOutputNodeId(outputNode.id);
 
-    try {
-      // Find the Snowpipe node
-      const snowpipeNode = nodes.find(
-        (node) => node.data.nodeType === "Snowpipe"
-      );
+    // Always compute the latest preview for real-time updates
+    const latestPreview = computePreview(outputNode.id);
 
-      console.log(snowpipeNode);
-      if (!snowpipeNode) {
-        throw new Error("Please add a Snowpipe node to the flow");
-      }
+    // Update the node with the latest generated preview
+    updateNodeData(outputNode.id, { generatedPreview: latestPreview });
 
-      // Get the Snowpipe configuration
-      const snowpipeConfig = snowpipeNode.data.snowpipeConfig;
-      const mappingRules = snowpipeNode.data.mappingRules;
-      if (!snowpipeConfig) {
-        throw new Error("Please configure the Snowpipe node");
-      }
+    // Use editedCode if it exists, otherwise the latest preview
+    const initialCode = outputNode.data.editedCode || latestPreview;
+    setFinalCode(initialCode);
 
-      // Find validation nodes
-      const validationNodes = nodes.filter(
-        (node) => node.data.nodeType === "validation"
-      );
+    // Parse initial constants for the form
+    const parsed = parseConstants(initialCode);
+    setEditableConsts(parsed);
 
-      // Extract validation configurations
-      const validations = validationNodes
-        .map((node) => {
-          const config = node.data.validationConfig;
-          if (config.selectedProcedure === "custom") {
-            return {
-              type: "custom",
-              procedureCall: config.customProcedureCall,
-            };
-          } else {
-            const selectedProc = validationSubprocedures.find(
-              (p) => p.procedure === config.selectedProcedure
-            );
-
-            if (selectedProc) {
-              const params = {};
-              selectedProc.parameters.forEach((param) => {
-                params[param.name] = config.parameters[param.name] || "";
-              });
-
-              return {
-                type: "predefined",
-                procedure: config.selectedProcedure,
-                parameters: params,
-              };
-            }
-            return null;
-          }
-        })
-        .filter(Boolean);
-
-      // Log validations for debugging
-      console.log("Validation nodes:", validationNodes);
-      console.log("Validation configurations:", validations);
-
-      const payload = {
-        process_id: snowpipeConfig.process_id,
-        output_table_name: snowpipeConfig.output_table_name,
-        output_table_zone: snowpipeConfig.output_table_zone,
-        file_format: snowpipeConfig.file_format,
-        pattern_type: snowpipeConfig.pattern_type,
-        stage_name: snowpipeConfig.stage_name,
-        mapping: mappingRules, // This should be an array of mapping objects
-        validations: validations, // Add validations to the payload
-      };
-
-      const response = await axios.post(
-        "http://127.0.0.1:8000/generate-pipe-with-json/",
-        payload
-      );
-      // Send data to backend
-      // const response = await axios.post(
-      //   "http://127.0.0.1:8000/generate-pipe-with-json/",
-      //   snowpipeConfig
-      // );
-
-      // Handle the response
-      if (response.data.pipe) {
-        // Pass the generated code to the parent component
-        if (onCodeGenerated) {
-          onCodeGenerated({
-            name: `${snowpipeConfig.output_table_name || "snowpipe"}.sql`,
-            content: response.data.pipe,
-          });
-        }
-      }
-    } catch (err) {
-      setError(err.message || "Error generating code");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setIsFinalCodeModalOpen(true);
+  } catch (err) {
+    setError(err.message || "Error generating code");
+    console.error(err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div
@@ -1995,6 +1598,7 @@ END;`;
           overflow: "hidden",
         }}
       >
+      
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -2058,56 +1662,58 @@ END;`;
           />
           <Background variant="dots" gap={12} size={1} color="#e2e8f0" />
           <Panel position="top-right">
-            <button
-              onClick={handleGenerateCode}
-              style={{
-                backgroundColor: "#3b82f6",
-                color: "white",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: 500,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                boxShadow: "0 2px 4px rgba(59,130,246,0.3)",
-                transition: "all 0.2s",
-              }}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <svg
-                    style={{
-                      width: "20px",
-                      height: "20px",
-                      animation: "spin 1s linear infinite",
-                    }}
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      fill="none"
-                      strokeDasharray="30 30"
-                    />
-                  </svg>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <span>✨</span>
-                  Generate Code
-                </>
-              )}
-            </button>
-          </Panel>
+  <button
+    onClick={handleGenerateCode}
+    style={{
+      backgroundColor: "#3b82f6",
+      color: "white",
+      border: "none",
+      padding: "8px 16px",
+      borderRadius: "8px",
+      fontSize: "14px",
+      fontWeight: 500,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "8px",
+      boxShadow: "0 2px 4px rgba(59,130,246,0.3)",
+      transition: "all 0.2s",
+    }}
+    disabled={loading}
+    onMouseEnter={(e) => { e.target.style.transform = "scale(1.05)"; }} // Creative hover animation
+    onMouseLeave={(e) => { e.target.style.transform = "scale(1)"; }}
+  >
+    {loading ? (
+      <>
+        <svg
+          style={{
+            width: "20px",
+            height: "20px",
+            animation: "spin 1s linear infinite",
+          }}
+          viewBox="0 0 24 24"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+            fill="none"
+            strokeDasharray="30 30"
+          />
+        </svg>
+        Generating...
+      </>
+    ) : (
+      <>
+        <span style={{ animation: "pulse 2s infinite" }}>✨</span> {/* Dynamic icon pulse for creativity */}
+        Generate Code
+      </>
+    )}
+  </button>
+</Panel>
           {error && (
             <Panel position="top-center">
               <div
@@ -2286,12 +1892,333 @@ END;`;
             </div>
           </div>
         </div>
+        
       )}
+      {isFinalCodeModalOpen && (
+  <div
+    className="modal-overlay"
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      background: "rgba(15,23,42,0.6)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    }}
+  >
+    <div
+      className="modal"
+      style={{
+        background: "white",
+        padding: 30,
+        borderRadius: 12,
+        width: 900,
+        maxHeight: "85vh",
+        overflowY: "auto",
+        boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+        border: "1px solid #e2e8f0",
+        animation: "fadeInScale 0.2s ease-out",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 20,
+          paddingBottom: 15,
+          borderBottom: "1px solid #f1f5f9",
+        }}
+      >
+        <h3
+          style={{
+            margin: 0,
+            color: "#1e293b",
+            fontSize: "18px",
+            fontWeight: 600,
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              marginRight: 10,
+              width: 24,
+              height: 24,
+              background: "#2f54eb",
+              borderRadius: "50%",
+              verticalAlign: "middle",
+            }}
+          ></span>
+          Final Generated Code
+        </h3>
+        <button
+          onClick={() => setIsFinalCodeModalOpen(false)}
+          style={{
+            background: "none",
+            border: "none",
+            fontSize: "20px",
+            cursor: "pointer",
+            color: "#94a3b8",
+            width: 30,
+            height: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "50%",
+            transition: "all 0.2s",
+          }}
+        >
+          ×
+        </button>
+      </div>
+      {objectType === "USP" && (
+        <div
+          style={{
+            background: "#f8fafc",
+            padding: "15px",
+            borderRadius: "8px",
+            marginBottom: "20px",
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          <h4
+            style={{
+              margin: "0 0 15px 0",
+              fontSize: "16px",
+              color: "#0369a1",
+            }}
+          >
+            Edit variables
+          </h4>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, 1fr)",
+              gap: "15px",
+            }}
+          >
+            {Object.keys(editableConsts).map((key) => (
+              <div key={key}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "6px",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    color: "#334155",
+                  }}
+                >
+                  {key}
+                </label>
+                <input
+                  type="text"
+                  value={editableConsts[key]}
+                  onChange={(e) =>
+                    setEditableConsts((prev) => ({
+                      ...prev,
+                      [key]: e.target.value,
+                    }))
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setEditableConsts(parseConstants(finalCode))}
+            style={{
+              marginTop: "10px",
+              padding: "8px 16px",
+              background: "#3b82f6",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 500,
+            }}
+          >
+            Sync Variables from Code
+          </button>
+          <p
+            style={{
+              marginTop: "10px",
+              fontSize: "12px",
+              color: "#64748b",
+            }}
+          >
+            Edit variables here to auto-update usages in the code. Use the textarea below for other custom edits.
+          </p>
+        </div>
+      )}
+      <div
+        style={{
+          background: "#f0f9ff",
+          padding: "15px",
+          borderRadius: "8px",
+          marginBottom: "20px",
+          border: "1px solid #bae6fd",
+        }}
+      >
+        <label
+          style={{
+            display: "block",
+            marginBottom: "6px",
+            fontSize: "14px",
+            fontWeight: 500,
+            color: "#334155",
+          }}
+        >
+          Edit Your Final SQL Code
+        </label>
+        <textarea
+          value={finalCode}
+          onChange={(e) => setFinalCode(e.target.value)}
+          placeholder="Your generated SQL code will appear here for editing..."
+          style={{
+            width: "100%",
+            minHeight: "400px",
+            padding: "10px",
+            borderRadius: "6px",
+            border: "1px solid #cbd5e1",
+            fontSize: "14px",
+            fontFamily: "monospace",
+            backgroundColor: "#fff",
+            color: "#334155",
+            resize: "vertical",
+            outline: "none",
+            transition: "border-color 0.2s",
+          }}
+          onFocus={(e) => { e.target.style.borderColor = "#3b82f6"; }}
+          onBlur={(e) => { e.target.style.borderColor = "#cbd5e1"; }}
+        />
+        <div
+          style={{
+            marginTop: "10px",
+            fontSize: "12px",
+            color: "#64748b",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <span>💡 Tip: Use Ctrl+Z for undo. Code is auto-saved on change.</span>
+        </div>
+        <div style={{ marginTop: "5px", color: "#10b981", fontSize: "12px" }}>
+          {saveStatus}
+        </div>
+      </div>
+      <div
+        style={{
+          marginTop: 25,
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          paddingTop: 20,
+          borderTop: "1px solid #f1f5f9",
+        }}
+      >
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => navigator.clipboard.writeText(finalCode)}
+            style={{
+              padding: "8px 16px",
+              background: "#10b981",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            📋 Copy Code
+          </button>
+          <button
+            onClick={() => {
+              const blob = new Blob([finalCode], { type: "text/sql" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "generated_code.sql";
+              a.click();
+            }}
+            style={{
+              padding: "8px 16px",
+              background: "#8b5cf6",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            ⬇️ Download SQL
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={() => setIsFinalCodeModalOpen(false)}
+            style={{
+              padding: "8px 16px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 500,
+              color: "#475569",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              updateNodeData(outputNodeId, { editedCode: finalCode }); // Ensure final save
+              onCodeGenerated(finalCode);
+              setIsFinalCodeModalOpen(false);
+            }}
+            style={{
+              padding: "8px 16px",
+              background: "#3b82f6",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: 500,
+              boxShadow: "0 2px 5px rgba(59,130,246,0.3)",
+            }}
+          >
+            Generate & Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
 
-// Helper function to get color based on node type
+
 function getNodeTypeColor(nodeType) {
   const colorMap = {
     input: "#1890ff",
@@ -2304,10 +2231,10 @@ function getNodeTypeColor(nodeType) {
   return colorMap[nodeType] || "#94a3b8";
 }
 
-export default function DrawProcess({ onCodeGenerated }) {
+export default function DrawProcess({ onCodeGenerated, objectType }) {
   return (
     <ReactFlowProvider>
-      <FlowCanvas onCodeGenerated={onCodeGenerated} />
+      <FlowCanvas onCodeGenerated={onCodeGenerated} objectType={objectType} />
     </ReactFlowProvider>
   );
 }

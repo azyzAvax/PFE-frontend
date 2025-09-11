@@ -7,23 +7,22 @@ export default function GeneratedCode({
   generatedFiles,
   handleDownloadAll,
   handleDownloadFile,
-  onUpdateFile,
-  onApproveFile,
 }) {
   const [expandedFileIndex, setExpandedFileIndex] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editorContent, setEditorContent] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [isDeploying, setIsDeploying] = useState(false);
   const [deploymentName, setDeploymentName] = useState("");
   const [showDeploymentModal, setShowDeploymentModal] = useState(false);
-  const [editingFileIndex, setEditingFileIndex] = useState(null);
-  const [editingContent, setEditingContent] = useState("");
 
   useEffect(() => {
-    if (generatedFiles.length === 1) {
-      setEditorContent(generatedFiles[0].content || "");
-    }
-  }, [generatedFiles]);
+  if (generatedFiles.length > 0) {
+    setEditorContent(generatedFiles[0].content || ""); // Sync with the first file's content
+  } else {
+    setEditorContent("");
+  }
+}, [generatedFiles]);
 
   const toggleExpand = (index) => {
     setExpandedFileIndex(expandedFileIndex === index ? null : index);
@@ -35,18 +34,82 @@ export default function GeneratedCode({
     );
   };
 
-  const toggleEdit = (index) => {
-    if (editingFileIndex === index) {
-      // Save changes and exit edit mode
-      if (onUpdateFile) {
-        onUpdateFile(index, editingContent);
-      }
-      setEditingFileIndex(null);
-      setEditingContent("");
-    } else {
-      // Enter edit mode
-      setEditingFileIndex(index);
-      setEditingContent(generatedFiles[index].content);
+  const handleDeploy = async (file) => {
+    const formData = new FormData();
+    formData.append(
+      "file",
+      new Blob([file.content], { type: "text/plain" }),
+      file.name
+    );
+    formData.append("branch_name", `deploy-${Date.now()}`);
+
+    try {
+      const res = await axios.post(
+        "http://127.0.0.1:8000/deploy-to-azure/",
+        formData
+      );
+      console.log("Deploy response:", res);
+      alert("Deployed! PR created at: " + res.data.pull_request_url);
+    } catch (err) {
+      console.error(err);
+      alert("Deployment failed.");
+    }
+  };
+
+  const handleDeployMultiple = async () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select at least one file to deploy.");
+      return;
+    }
+
+    if (!deploymentName.trim()) {
+      alert("Please provide a name for this deployment.");
+      return;
+    }
+
+    setIsDeploying(true);
+
+    const formData = new FormData();
+
+    // Add each selected file to the formData
+    selectedFiles.forEach((index) => {
+      const file = generatedFiles[index];
+      formData.append(
+        "files",
+        new Blob([file.content], { type: "text/plain" }),
+        file.name
+      );
+    });
+
+    // Add branch name
+    formData.append(
+      "branch_name",
+      `deploy-${deploymentName.replace(/[^a-zA-Z0-9-]/g, "-")}-${Date.now()}`
+    );
+    formData.append(
+      "description",
+      `Deployment of ${selectedFiles.length} files: ${selectedFiles
+        .map((index) => generatedFiles[index].name)
+        .join(", ")}`
+    );
+
+    try {
+      const res = await axios.post(
+        "http://127.0.0.1:8000/deploy-multiple-to-azure/",
+        formData
+      );
+      console.log("Deploy response:", res);
+      alert("Deployed! PR created at: " + res.data.pull_request_url);
+      setShowDeploymentModal(false);
+      setSelectedFiles([]);
+      setDeploymentName("");
+    } catch (err) {
+      console.error(err);
+      alert(
+        "Deployment failed: " + (err.response?.data?.detail || err.message)
+      );
+    } finally {
+      setIsDeploying(false);
     }
   };
 
@@ -109,6 +172,27 @@ export default function GeneratedCode({
                 onClick={() => setShowDeploymentModal(false)}
               >
                 Cancel
+              </button>
+              <button
+                className="deploy-btn"
+                onClick={handleDeployMultiple}
+                disabled={
+                  selectedFiles.length === 0 ||
+                  isDeploying ||
+                  !deploymentName.trim()
+                }
+              >
+                {isDeploying ? (
+                  <>
+                    <span className="spinner"></span>
+                    Deploying...
+                  </>
+                ) : (
+                  <>
+                    <span>🚀</span>
+                    Deploy Files
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -210,169 +294,148 @@ export default function GeneratedCode({
             generate code to create your files.
           </p>
         </div>
-      ) : generatedFiles.length === 1 ? (
-        <div
+      ): generatedFiles.length === 1 ? (
+  <div
+    style={{
+      backgroundColor: "#fff",
+      borderRadius: "12px",
+      overflow: "hidden",
+      border: "1px solid #e2e8f0",
+      boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+    }}
+  >
+    <div
+      style={{
+        padding: "15px 20px",
+        borderBottom: "1px solid #e2e8f0",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        background: "#f8fafc",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ fontSize: "20px" }}>
+          {generatedFiles[0].name.endsWith(".sql")
+            ? "📜"
+            : generatedFiles[0].name.endsWith(".py")
+            ? "🐍"
+            : generatedFiles[0].name.endsWith(".json")
+            ? "📋"
+            : "📄"}
+        </div>
+        <h3
           style={{
-            backgroundColor: "#fff",
-            borderRadius: "12px",
-            overflow: "hidden",
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+            margin: 0,
+            fontSize: "16px",
+            fontWeight: 600,
+            color: "#334155",
           }}
         >
-          <div
-            style={{
-              padding: "15px 20px",
-              borderBottom: "1px solid #e2e8f0",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              background: "#f8fafc",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ fontSize: "20px" }}>
-                {generatedFiles[0].name.endsWith(".sql")
-                  ? "📜"
-                  : generatedFiles[0].name.endsWith(".py")
-                  ? "🐍"
-                  : generatedFiles[0].name.endsWith(".json")
-                  ? "📋"
-                  : "📄"}
-              </div>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: "16px",
-                  fontWeight: 600,
-                  color: "#334155",
-                }}
-              >
-                {generatedFiles[0].name}
-              </h3>
-            </div>
+          {generatedFiles[0].name}
+        </h3>
+      </div>
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={() => setIsEditing((prev) => !prev)}
-                style={{
-                  padding: "8px 12px",
-                  backgroundColor: isEditing ? "#f8fafc" : "#f1f5f9",
-                  color: isEditing ? "#3b82f6" : "#475569",
-                  border: isEditing ? "1px solid #3b82f6" : "1px solid #cbd5e1",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <span>{isEditing ? "✓" : "✏️"}</span>
-                {isEditing ? "Preview" : "Edit"}
-              </button>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <button
+          onClick={() => setIsEditing((prev) => !prev)}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: isEditing ? "#f8fafc" : "#f1f5f9",
+            color: isEditing ? "#3b82f6" : "#475569",
+            border: isEditing ? "1px solid #3b82f6" : "1px solid #cbd5e1",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          <span>{isEditing ? "✓" : "✏️"}</span>
+          {isEditing ? "Preview" : "Edit"}
+        </button>
 
-              <button
-                onClick={() => {
-                  // Update the file content with editor changes
-                  if (onUpdateFile) {
-                    onUpdateFile(0, editorContent);
-                  }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  backgroundColor: "#10b981",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <span>💾</span>
-                Save Changes
-              </button>
-              <button
-                onClick={() => onApproveFile(generatedFiles[0])}
-                style={{
-                  padding: "8px 12px",
-                  backgroundColor: "#6366f1",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <span>✅</span> Approve
-              </button>
-              <button
-                onClick={() => handleDownloadFile(generatedFiles[0])}
-                style={{
-                  padding: "8px 12px",
-                  backgroundColor: "#3b82f6",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <span>⬇️</span>
-                Download
-              </button>
-            </div>
-          </div>
+        <button
+          onClick={() => handleDeploy(generatedFiles[0])}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "#10b981",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          <span>🚀</span>
+          Deploy
+        </button>
 
-          <div style={{ height: "500px" }}>
-            {isEditing ? (
-              <Editor
-                height="100%"
-                language="sql"
-                value={editorContent}
-                onChange={(value) => setEditorContent(value)}
-                theme="vs-dark"
-                options={{
-                  minimap: { enabled: true },
-                  fontSize: 14,
-                  scrollBeyondLastLine: false,
-                  wordWrap: "on",
-                  lineNumbers: "on",
-                }}
-              />
-            ) : (
-              <pre
-                style={{
-                  margin: 0,
-                  padding: "20px",
-                  background: "#1e293b",
-                  color: "#f8fafc",
-                  height: "100%",
-                  overflow: "auto",
-                  borderRadius: "0",
-                  fontSize: "14px",
-                  lineHeight: 1.6,
-                }}
-              >
-                {editorContent}
-              </pre>
-            )}
-          </div>
-        </div>
+        <button
+          onClick={() => handleDownloadFile(generatedFiles[0])}
+          style={{
+            padding: "8px 12px",
+            backgroundColor: "#3b82f6",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "13px",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          <span>⬇️</span>
+          Download
+        </button>
+      </div>
+    </div>
+
+    <div style={{ height: "500px" }}>
+      {isEditing ? (
+        <Editor
+          height="100%"
+          language="sql"
+          value={editorContent}
+          onChange={(value) => setEditorContent(value)}
+          theme="vs-dark"
+          options={{
+            minimap: { enabled: true },
+            fontSize: 14,
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            lineNumbers: "on",
+          }}
+        />
       ) : (
+        <pre
+          style={{
+            margin: 0,
+            padding: "20px",
+            background: "#1e293b",
+            color: "#f8fafc",
+            height: "100%",
+            overflow: "auto",
+            borderRadius: "0",
+            fontSize: "14px",
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {generatedFiles[0].content || "No content available"} {/* Use direct content as fallback */}
+        </pre>
+      )}
+    </div>
+  </div>
+) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
           {generatedFiles.map((file, index) => (
             <div
@@ -454,11 +517,10 @@ export default function GeneratedCode({
                   </button>
 
                   <button
-                    onClick={() => toggleEdit(index)}
+                    onClick={() => handleDeploy(file)}
                     style={{
                       padding: "6px 10px",
-                      backgroundColor:
-                        editingFileIndex === index ? "#f59e0b" : "#10b981",
+                      backgroundColor: "#10b981",
                       color: "white",
                       border: "none",
                       borderRadius: "6px",
@@ -470,27 +532,10 @@ export default function GeneratedCode({
                       gap: "6px",
                     }}
                   >
-                    <span>{editingFileIndex === index ? "💾" : "✏️"}</span>
-                    {editingFileIndex === index ? "Save" : "Edit"}
+                    <span>🚀</span>
+                    Deploy
                   </button>
-                  <button
-                    onClick={() => onApproveFile(file)}
-                    style={{
-                      padding: "6px 10px",
-                      backgroundColor: "#6366f1",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      cursor: "pointer",
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <span>✅</span> Approve
-                  </button>
+
                   <button
                     onClick={() => handleDownloadFile(file)}
                     style={{
@@ -514,45 +559,20 @@ export default function GeneratedCode({
               </div>
 
               {expandedFileIndex === index && (
-                <div style={{ height: "300px" }}>
-                  {editingFileIndex === index ? (
-                    <Editor
-                      height="100%"
-                      language={
-                        file.name.endsWith(".sql")
-                          ? "sql"
-                          : file.name.endsWith(".py")
-                          ? "python"
-                          : "json"
-                      }
-                      value={editingContent}
-                      onChange={(value) => setEditingContent(value)}
-                      theme="vs-dark"
-                      options={{
-                        minimap: { enabled: false },
-                        fontSize: 14,
-                        scrollBeyondLastLine: false,
-                        wordWrap: "on",
-                        lineNumbers: "on",
-                      }}
-                    />
-                  ) : (
-                    <pre
-                      style={{
-                        margin: 0,
-                        padding: "16px",
-                        background: "#1e293b",
-                        color: "#f8fafc",
-                        overflow: "auto",
-                        height: "100%",
-                        fontSize: "14px",
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      <code>{file.content}</code>
-                    </pre>
-                  )}
-                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: "16px",
+                    background: "#1e293b",
+                    color: "#f8fafc",
+                    overflow: "auto",
+                    maxHeight: "300px",
+                    fontSize: "14px",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <code>{file.content}</code>
+                </pre>
               )}
             </div>
           ))}
