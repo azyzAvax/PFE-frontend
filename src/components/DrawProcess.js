@@ -22,10 +22,13 @@ import ValidationModal from "../components/ValidationModal";
 
 function useDebounce(callback, delay) {
   const timeoutRef = useRef(null);
-  const debouncedFn = useCallback((...args) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => callback(...args), delay);
-  }, [callback, delay]);
+  const debouncedFn = useCallback(
+    (...args) => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => callback(...args), delay);
+    },
+    [callback, delay]
+  );
 
   useEffect(() => {
     return () => {
@@ -37,7 +40,7 @@ function useDebounce(callback, delay) {
 }
 const nodeTypes = {
   default: CustomNode,
-}
+};
 
 const toolboxItems = [
   { type: "input", label: "Input", icon: "📥" },
@@ -46,7 +49,7 @@ const toolboxItems = [
   { type: "validation", label: "Validation", icon: "✓" },
   { type: "merge", label: "Merge", icon: "🔄" },
   { type: "output", label: "Output", icon: "📤" },
-    { type: "aggregation", label: "Aggregator", icon: "🔀" },
+  { type: "aggregation", label: "Aggregator", icon: "🔀" },
 ];
 
 // List of validation subprocedures with their parameters
@@ -122,13 +125,13 @@ const validationSubprocedures = [
 const initialNodes = [];
 const initialEdges = [];
 
-function FlowCanvas({ onCodeGenerated ,objectType}) {
+function FlowCanvas({ onCodeGenerated, objectType }) {
   const reactFlowWrapper = useRef(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   // eslint-disable-next-line no-undef
   useEffect(() => {
-  console.log("Updated Nodes:", nodes);
-}, [nodes]);
+    console.log("Updated Nodes:", nodes);
+  }, [nodes]);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [reactFlowInstance, setReactFlowInstance] = useState(null);
   const [draggedNodeId, setDraggedNodeId] = useState(null);
@@ -176,50 +179,50 @@ function FlowCanvas({ onCodeGenerated ,objectType}) {
   const [isFinalCodeModalOpen, setIsFinalCodeModalOpen] = useState(false);
   const [finalCode, setFinalCode] = useState("");
   const [outputNodeId, setOutputNodeId] = useState(null);
-  const [saveStatus, setSaveStatus] = useState('');
-  const saveTimer = useRef(null); 
+  const [saveStatus, setSaveStatus] = useState("");
+  const saveTimer = useRef(null);
 
-
-useEffect(() => {
-  if (isFinalCodeModalOpen && outputNodeId) {
-    setSaveStatus(''); // Reset status
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      updateNodeData(outputNodeId, { editedCode: finalCode });
-      setSaveStatus('Saving...');
-      setTimeout(() => setSaveStatus('Saved'), 500);
-    }, 1000); // Debounce auto-save
-  }
-  return () => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-  };
-}, [finalCode, isFinalCodeModalOpen, outputNodeId]);
+  useEffect(() => {
+    if (isFinalCodeModalOpen && outputNodeId) {
+      setSaveStatus(""); // Reset status
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        updateNodeData(outputNodeId, { editedCode: finalCode });
+        setSaveStatus("Saving...");
+        setTimeout(() => setSaveStatus("Saved"), 500);
+      }, 1000); // Debounce auto-save
+    }
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [finalCode, isFinalCodeModalOpen, outputNodeId]);
 
   const parseConstants = (code) => {
-  const consts = {};
-  const regex = /const\s+([a-z_]+)\s*=\s*['"]([^'"]*)['"]\s*;/g;
-  const matches = [...code.matchAll(regex)];
-  matches.forEach((match) => {
-    consts[match[1]] = match[2];
-  });
-  return consts;
-};
-
+    const consts = {};
+    const regex = /const\s+([a-z_]+)\s*=\s*['"]([^'"]*)['"]\s*;/g;
+    const matches = [...code.matchAll(regex)];
+    matches.forEach((match) => {
+      consts[match[1]] = match[2];
+    });
+    return consts;
+  };
 
   const updateProcessConfig = (newConfig) => {
     setProcessConfig(newConfig);
-}
+  };
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  
-const updateNodeData = (nodeId, newData) => {
-  setNodes((nds) =>
-    nds.map((node) =>
-      node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
-    )
-  );
-};
+
+  const updateNodeData = (nodeId, newData) => {
+    setNodes((nds) =>
+      nds.map((node) =>
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, ...newData } }
+          : node
+      )
+    );
+  };
 
   const updateInputCell = (index, value) => {
     const updated = [...inputCells];
@@ -463,257 +466,327 @@ const updateNodeData = (nodeId, newData) => {
   };
 
   useEffect(() => {
-  if (selectedNode?.data?.nodeType === "output" && isModalOpen) {
-    generatePreview();
-  }
-}, [selectedNode, isModalOpen, objectType, nodes]);
-
-const [editableConsts, setEditableConsts] = useState({});
-
-
-useEffect(() => {
-  if (isFinalCodeModalOpen && objectType === "USP") {
-    const newCode = computePreview(outputNodeId, editableConsts);
-    setFinalCode(newCode);
-  }
-}, [editableConsts, isFinalCodeModalOpen, objectType, outputNodeId, nodes, edges]);
-
-
-const handleTextareaChange = useCallback(
-  (e) => {
-    const newCode = e.target.value;
-    setFinalCode(newCode);
-    try {
-      const { consts, customCode } = parseConstants(newCode);
-      setEditableConsts(consts);
-      const regenerated = computePreview(outputNodeId, consts, customCode);
-      if (regenerated !== newCode && regenerated !== finalCode) {
-        setFinalCode(regenerated);
-      }
-      setError("");
-    } catch (err) {
-      setError(`Error processing code: ${err.message}`);
-      console.error("Error in textarea onChange:", err);
+    if (selectedNode?.data?.nodeType === "output" && isModalOpen) {
+      generatePreview();
     }
-  },
-  [outputNodeId, finalCode]
-);
+  }, [selectedNode, isModalOpen, objectType, nodes]);
 
-const debouncedHandleTextareaChange = useDebounce(handleTextareaChange, 500);
+  const [editableConsts, setEditableConsts] = useState({});
 
+  useEffect(() => {
+    if (isFinalCodeModalOpen && objectType === "USP") {
+      const newCode = computePreview(outputNodeId, editableConsts);
+      setFinalCode(newCode);
+    }
+  }, [
+    editableConsts,
+    isFinalCodeModalOpen,
+    objectType,
+    outputNodeId,
+    nodes,
+    edges,
+  ]);
 
+  const handleTextareaChange = useCallback(
+    (e) => {
+      const newCode = e.target.value;
+      setFinalCode(newCode);
+      try {
+        const { consts, customCode } = parseConstants(newCode);
+        setEditableConsts(consts);
+        const regenerated = computePreview(outputNodeId, consts, customCode);
+        if (regenerated !== newCode && regenerated !== finalCode) {
+          setFinalCode(regenerated);
+        }
+        setError("");
+      } catch (err) {
+        setError(`Error processing code: ${err.message}`);
+        console.error("Error in textarea onChange:", err);
+      }
+    },
+    [outputNodeId, finalCode]
+  );
 
-const computePreview = (nodeId, overrides = {}) => {
-  const outputNode = nodes.find((node) => node.id === nodeId);
-  if (!outputNode || outputNode.data.nodeType !== "output") return "";
+  const debouncedHandleTextareaChange = useDebounce(handleTextareaChange, 500);
 
-  const attachedNodes = getUpstreamNodes(nodeId);
-  const mergeNode = attachedNodes.find((n) => n?.data?.nodeType === "merge");
+  const computePreview = (nodeId, overrides = {}) => {
+    const outputNode = nodes.find((node) => node.id === nodeId);
+    if (!outputNode || outputNode.data.nodeType !== "output") return "";
 
-  let previewText = "";
+    const attachedNodes = getUpstreamNodes(nodeId);
+    const mergeNode = attachedNodes.find((n) => n?.data?.nodeType === "merge");
+
+    let previewText = "";
     switch (objectType) {
       case "USP":
         if (!mergeNode) {
-        previewText = "Error: No merge node found in the flow.";
-        break;
+          previewText = "Error: No merge node found in the flow.";
+          break;
         }
 
         const mergeData = mergeNode.data || {};
         const mergeConfig = mergeData.mergeConfig || {};
-      const procedureName = mergeData.procedureName || (mergeConfig.targetTable
-          ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-        : "usp_default");
-      const processId = overrides.process_id || mergeData.processId || (mergeConfig.targetTable
-        ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-        : "usp_default");
-        const targetTable = overrides.destination_table || mergeConfig.targetTable || "";
-        const targetTableSchema = overrides.destination_table_schema || mergeConfig.targetTableSchema || "";
+        const procedureName =
+          mergeData.procedureName ||
+          (mergeConfig.targetTable
+            ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+            : "usp_default");
+        const processId =
+          overrides.process_id ||
+          mergeData.processId ||
+          (mergeConfig.targetTable
+            ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+            : "usp_default");
+        const targetTable =
+          overrides.destination_table || mergeConfig.targetTable || "";
+        const targetTableSchema =
+          overrides.destination_table_schema ||
+          mergeConfig.targetTableSchema ||
+          "";
         const sourceTable = mergeConfig.sourceTable || "";
-        const targetTemporary = overrides.target_table || (targetTable ? `tmp_${targetTable}` : "");
-        const targetTemporarySchema = overrides.target_table_schema || mergeConfig.targetTableSchema || "";
-        const processSchema = overrides.process_schema || mergeConfig.targetTableSchema || "";
+        const targetTemporary =
+          overrides.target_table || (targetTable ? `tmp_${targetTable}` : "");
+        const targetTemporarySchema =
+          overrides.target_table_schema || mergeConfig.targetTableSchema || "";
+        const processSchema =
+          overrides.process_schema || mergeConfig.targetTableSchema || "";
 
-        previewText = `CREATE OR REPLACE PROCEDURE ${procedureName}()\nRETURNS OBJECT\nLANGUAGE JAVASCRIPT\nCOMMENT = '${mergeConfig.comment || "資源価格マスタ_ODSデータ取込"}'\nEXECUTE AS CALLER\nAS $$\ntry {\n`;
+        previewText = `CREATE OR REPLACE PROCEDURE ${procedureName}()\nRETURNS OBJECT\nLANGUAGE JAVASCRIPT\nCOMMENT = '${
+          mergeConfig.comment || "資源価格マスタ_ODSデータ取込"
+        }'\nEXECUTE AS CALLER\nAS $$\ntry {\n`;
         previewText += `  const target_table = '${targetTemporary}';\n  const target_table_schema = '${targetTemporarySchema}';\n  const destination_table = '${targetTable}';\n  const destination_table_schema = '${targetTableSchema}';\n  const process_id = '${processId}';\n  const process_schema = '${processSchema}';\n`;
-        previewText += "  snowflake.execute({ sqlText: 'BEGIN;' });\n  snowflake.execute({ sqlText: `USE SCHEMA ${destination_table_schema};` });\n  snowflake.execute({ sqlText: 'ALTER SESSION SET TIMEZONE = \"Asia/Tokyo\";' });\n";
+        previewText +=
+          "  snowflake.execute({ sqlText: 'BEGIN;' });\n  snowflake.execute({ sqlText: `USE SCHEMA ${destination_table_schema};` });\n  snowflake.execute({ sqlText: 'ALTER SESSION SET TIMEZONE = \"Asia/Tokyo\";' });\n";
 
-        const inputNode = attachedNodes.find((n) => n?.data?.nodeType === "input");
+        const inputNode = attachedNodes.find(
+          (n) => n?.data?.nodeType === "input"
+        );
         if (inputNode) {
-          previewText += `  // Data Extraction from Input\n  snowflake.execute({ sqlText: \`CREATE OR REPLACE TEMPORARY TABLE ${targetTemporarySchema}.${targetTemporary} AS SELECT ${inputNode.data.inputCells?.join(", ") || "*"} FROM ${targetTemporarySchema}.${sourceTable} WHERE METADATA$ACTION = 'INSERT';\` });\n`;
+          previewText += `  // Data Extraction from Input\n  snowflake.execute({ sqlText: \`CREATE OR REPLACE TEMPORARY TABLE ${targetTemporarySchema}.${targetTemporary} AS SELECT ${
+            inputNode.data.inputCells?.join(", ") || "*"
+          } FROM ${targetTemporarySchema}.${sourceTable} WHERE METADATA$ACTION = 'INSERT';\` });\n`;
         }
 
-        const validationNodes = attachedNodes.filter((n) => n?.data?.nodeType === "validation");
+        const validationNodes = attachedNodes.filter(
+          (n) => n?.data?.nodeType === "validation"
+        );
         validationNodes.forEach((node, index) => {
           const config = node?.data?.validationConfig;
           if (config) {
             const procCall = config.customProcedureCall || config.procedureCall;
             if (procCall) {
-              previewText += `  // Validation Step ${index + 1}\n  snowflake.execute({ sqlText: \`CALL ${processSchema}.${procCall}('${targetTemporary}', '${targetTemporarySchema}', '${targetTable}', '${targetTableSchema}', '${processId}', '${processSchema}'${procCall.includes("duplication") ? ", '[\\\"RES_PRICE_PRODUCT_ID\\\", \\\"APPLY_START_DATE\\\"]'" : ""});\` });\n`;
+              previewText += `  // Validation Step ${
+                index + 1
+              }\n  snowflake.execute({ sqlText: \`CALL ${processSchema}.${procCall}('${targetTemporary}', '${targetTemporarySchema}', '${targetTable}', '${targetTableSchema}', '${processId}', '${processSchema}'${
+                procCall.includes("duplication")
+                  ? ', \'[\\"RES_PRICE_PRODUCT_ID\\", \\"APPLY_START_DATE\\"]\''
+                  : ""
+              });\` });\n`;
             }
           }
         });
 
         if (mergeNode) {
           let mergeQuery = generateMergeQuery();
-          mergeQuery = mergeQuery.replace(/^CREATE OR REPLACE PROCEDURE .* RETURNS STRING LANGUAGE SQL AS\s*BEGIN\s*/, "").replace(/\s*RETURN.*END;/, "").trim();
+          mergeQuery = mergeQuery
+            .replace(
+              /^CREATE OR REPLACE PROCEDURE .* RETURNS STRING LANGUAGE SQL AS\s*BEGIN\s*/,
+              ""
+            )
+            .replace(/\s*RETURN.*END;/, "")
+            .trim();
           previewText += `  // Merge Step\n  snowflake.execute({ sqlText: \`${mergeQuery}\` });\n`;
         }
 
-        previewText += "  snowflake.execute({ sqlText: 'COMMIT;' });\n  return { \"status\": \"SUCCESS\" };\n";
-        previewText += "} catch (err) {\n  snowflake.execute({ sqlText: 'ROLLBACK;' });\n  snowflake.execute({ sqlText: `DROP TABLE ${targetTemporarySchema}.${targetTemporary};` });\n  throw err;\n}\n$$;\n";
+        previewText +=
+          '  snowflake.execute({ sqlText: \'COMMIT;\' });\n  return { "status": "SUCCESS" };\n';
+        previewText +=
+          "} catch (err) {\n  snowflake.execute({ sqlText: 'ROLLBACK;' });\n  snowflake.execute({ sqlText: `DROP TABLE ${targetTemporarySchema}.${targetTemporary};` });\n  throw err;\n}\n$$;\n";
         break;
 
-    case "TABLE":
-      const inputNodeTable = attachedNodes.find((n) => n?.data?.nodeType === "input");
-      const fields = inputNodeTable?.data?.inputCells || [];
-      const tableName = mergeNode?.data?.mergeConfig?.targetTable || "dl_m_bg";
-      const tableSchema = mergeNode?.data?.mergeConfig?.targetTableSchema || "dlz";
-      previewText = `CREATE TABLE IF NOT EXISTS ${tableSchema}.${tableName} (\n`;
-      fields.forEach((field) => {
-        previewText += `  ${field} VARCHAR NULL COMMENT '${field.toUpperCase()}',\n`;
-      });
-      previewText += `  file_name VARCHAR NOT NULL COMMENT 'ファイル名',\n  row_number NUMBER NOT NULL COMMENT '行番号',\n  create_at TIMESTAMP_LTZ(7) NOT NULL COMMENT '作成日時',\n  update_at TIMESTAMP_LTZ(7) NULL COMMENT '更新日時',\n  process_at TIMESTAMP_LTZ(7) NOT NULL COMMENT '処理日時',\n  process_id VARCHAR(255) NOT NULL COMMENT '処理ID',\n  create_by VARCHAR NULL COMMENT '作成者',\n  update_by VARCHAR NULL COMMENT '更新者'\n) COMMENT = '${mergeNode?.data?.mergeConfig?.comment || "BGマスタ"}';\n`;
-      break;
-
-    case "PIPE":
-      const snowpipeNode = attachedNodes.find((n) => n?.data?.nodeType === "Snowpipe");
-      if (!snowpipeNode) {
-        return "Error: No Snowpipe node found in the flow.";
-      }
-      const snowpipeData = snowpipeNode.data || {};
-      const pipeConfig = snowpipeData.snowpipeConfig || {
-        process_id: "",
-        output_table_name: "dl_m_bg",
-        output_table_zone: "dlz",
-        file_format: "fmt_csv_02",
-        pattern_type: "csv",
-        stage_name: "dlz.stg_pv_tosnowflake",
-      };
-      const mappingRules = snowpipeData.mappingRules || [];
-      const aggregationFields = snowpipeData.aggregationFields || [];
-      const groupByFields = snowpipeData.groupByFields || [];
-      
-      // Use pipeConfig for target table/schema, not mergeNode
-      const pipeName = pipeConfig.process_id 
-        ? `${pipeConfig.process_id.replace(/[^a-zA-Z0-9]/g, "_")}` 
-        : "pip_dl_m_bg";
-      const targetTablePipe = pipeConfig.output_table_name || "dl_m_bg";
-      const targetSchemaPipe = pipeConfig.output_table_zone || "dlz";
-      const pipeComment = pipeConfig.comment || mergeNode?.data?.mergeConfig?.comment || "BGマスタ";
-
-      // Validate mappings
-      if (mappingRules.length === 0) {
-        return "Error: No mapping rules defined for Snowpipe.";
-      }
-
-      previewText = `CREATE OR REPLACE PIPE ${targetSchemaPipe}.${pipeName}\n` +
-                    `  INTEGRATION = NTF_INT_EVENTS\n` +
-                    `  AUTO_INGEST = TRUE\n` +
-                    `  COMMENT = '${pipeComment}'\n` +
-                    `  AS\n` +
-                    `  COPY INTO ${targetSchemaPipe}.${targetTablePipe} (\n`;
-
-      // Add output columns
-      mappingRules.forEach((rule) => {
-        if (rule.output_Name) {
-          previewText += `    ${rule.output_Name},\n`;
-        }
-      });
-      previewText += `    file_name,\n` +
-                      `    row_number,\n` +
-                      `    create_at,\n` +
-                      `    update_at,\n` +
-                      `    process_at,\n` +
-                      `    process_id,\n` +
-                      `    create_by,\n` +
-                      `    update_by\n` +
-                      `  )\n` +
-                      `  FROM (\n` +
-                      `    SELECT\n`;
-
-      // Handle aggregations or direct mappings
-      if (aggregationFields.length > 0) {
-        aggregationFields.forEach((agg) => {
-          if (agg.field && agg.function) {
-            const outputName = mappingRules.find((rule) => rule.input_Name === agg.field)?.output_Name || agg.field;
-            previewText += `      ${agg.function}(${agg.field}) AS ${outputName},\n`;
-          }
+      case "TABLE":
+        const inputNodeTable = attachedNodes.find(
+          (n) => n?.data?.nodeType === "input"
+        );
+        const fields = inputNodeTable?.data?.inputCells || [];
+        const tableName =
+          mergeNode?.data?.mergeConfig?.targetTable || "dl_m_bg";
+        const tableSchema =
+          mergeNode?.data?.mergeConfig?.targetTableSchema || "dlz";
+        previewText = `CREATE TABLE IF NOT EXISTS ${tableSchema}.${tableName} (\n`;
+        fields.forEach((field) => {
+          previewText += `  ${field} VARCHAR NULL COMMENT '${field.toUpperCase()}',\n`;
         });
-      } else {
+        previewText += `  file_name VARCHAR NOT NULL COMMENT 'ファイル名',\n  row_number NUMBER NOT NULL COMMENT '行番号',\n  create_at TIMESTAMP_LTZ(7) NOT NULL COMMENT '作成日時',\n  update_at TIMESTAMP_LTZ(7) NULL COMMENT '更新日時',\n  process_at TIMESTAMP_LTZ(7) NOT NULL COMMENT '処理日時',\n  process_id VARCHAR(255) NOT NULL COMMENT '処理ID',\n  create_by VARCHAR NULL COMMENT '作成者',\n  update_by VARCHAR NULL COMMENT '更新者'\n) COMMENT = '${
+          mergeNode?.data?.mergeConfig?.comment || "BGマスタ"
+        }';\n`;
+        break;
+
+      case "PIPE":
+        const snowpipeNode = attachedNodes.find(
+          (n) => n?.data?.nodeType === "Snowpipe"
+        );
+        if (!snowpipeNode) {
+          return "Error: No Snowpipe node found in the flow.";
+        }
+        const snowpipeData = snowpipeNode.data || {};
+        const pipeConfig = snowpipeData.snowpipeConfig || {
+          process_id: "",
+          output_table_name: "dl_m_bg",
+          output_table_zone: "dlz",
+          file_format: "fmt_csv_02",
+          pattern_type: "csv",
+          stage_name: "dlz.stg_pv_tosnowflake",
+        };
+        const mappingRules = snowpipeData.mappingRules || [];
+        const aggregationFields = snowpipeData.aggregationFields || [];
+        const groupByFields = snowpipeData.groupByFields || [];
+
+        // Use pipeConfig for target table/schema, not mergeNode
+        const pipeName = pipeConfig.process_id
+          ? `${pipeConfig.process_id.replace(/[^a-zA-Z0-9]/g, "_")}`
+          : "pip_dl_m_bg";
+        const targetTablePipe = pipeConfig.output_table_name || "dl_m_bg";
+        const targetSchemaPipe = pipeConfig.output_table_zone || "dlz";
+        const pipeComment =
+          pipeConfig.comment ||
+          mergeNode?.data?.mergeConfig?.comment ||
+          "BGマスタ";
+
+        // Validate mappings
+        if (mappingRules.length === 0) {
+          return "Error: No mapping rules defined for Snowpipe.";
+        }
+
+        previewText =
+          `CREATE OR REPLACE PIPE ${targetSchemaPipe}.${pipeName}\n` +
+          `  INTEGRATION = NTF_INT_EVENTS\n` +
+          `  AUTO_INGEST = TRUE\n` +
+          `  COMMENT = '${pipeComment}'\n` +
+          `  AS\n` +
+          `  COPY INTO ${targetSchemaPipe}.${targetTablePipe} (\n`;
+
+        // Add output columns
         mappingRules.forEach((rule) => {
-          if (rule.input_Name && rule.output_Name) {
-            previewText += `      t.${rule.input_Name} AS ${rule.output_Name},\n`;
+          if (rule.output_Name) {
+            previewText += `    ${rule.output_Name},\n`;
           }
         });
-      }
+        previewText +=
+          `    file_name,\n` +
+          `    row_number,\n` +
+          `    create_at,\n` +
+          `    update_at,\n` +
+          `    process_at,\n` +
+          `    process_id,\n` +
+          `    create_by,\n` +
+          `    update_by\n` +
+          `  )\n` +
+          `  FROM (\n` +
+          `    SELECT\n`;
 
-      // Add metadata fields
-      previewText += `      METADATA$FILENAME AS file_name,\n` +
-                      `      METADATA$FILE_ROW_NUMBER AS row_number,\n` +
-                      `      CURRENT_TIMESTAMP() AS create_at,\n` +
-                      `      NULL AS update_at,\n` +
-                      `      CURRENT_TIMESTAMP() AS process_at,\n` +
-                      `      '${pipeConfig.process_id || "PIP_DL_M_BG"}' AS process_id,\n` +
-                      `      t.$5 AS create_by,\n` +
-                      `      t.$6 AS update_by\n` +
-                      `    FROM\n` +
-                      `      @${pipeConfig.stage_name || "dlz.stg_pv_tosnowflake"}/${pipeConfig.output_table_zone || "azurepipeline/dl_m_bg"}/ (\n` +
-                      `        FILE_FORMAT => '${pipeConfig.file_format || "dlz.fmt_csv_02"}',\n` +
-                      `        pattern => '.*[.]${pipeConfig.pattern_type || "csv"}'\n` +
-                      `      ) t\n`;
-
-      // Add GROUP BY if present
-      if (groupByFields.length > 0) {
-        const validGroupByFields = groupByFields.filter((field) => field);
-        if (validGroupByFields.length > 0) {
-          previewText += `    GROUP BY ${validGroupByFields.join(", ")}\n`;
+        // Handle aggregations or direct mappings
+        if (aggregationFields.length > 0) {
+          aggregationFields.forEach((agg) => {
+            if (agg.field && agg.function) {
+              const outputName =
+                mappingRules.find((rule) => rule.input_Name === agg.field)
+                  ?.output_Name || agg.field;
+              previewText += `      ${agg.function}(${agg.field}) AS ${outputName},\n`;
+            }
+          });
+        } else {
+          mappingRules.forEach((rule) => {
+            if (rule.input_Name && rule.output_Name) {
+              previewText += `      t.${rule.input_Name} AS ${rule.output_Name},\n`;
+            }
+          });
         }
-      }
 
-      previewText += `  );\n`;
-      break;
+        // Add metadata fields
+        previewText +=
+          `      METADATA$FILENAME AS file_name,\n` +
+          `      METADATA$FILE_ROW_NUMBER AS row_number,\n` +
+          `      CURRENT_TIMESTAMP() AS create_at,\n` +
+          `      NULL AS update_at,\n` +
+          `      CURRENT_TIMESTAMP() AS process_at,\n` +
+          `      '${pipeConfig.process_id || "PIP_DL_M_BG"}' AS process_id,\n` +
+          `      t.$5 AS create_by,\n` +
+          `      t.$6 AS update_by\n` +
+          `    FROM\n` +
+          `      @${pipeConfig.stage_name || "dlz.stg_pv_tosnowflake"}/${
+            pipeConfig.output_table_zone || "azurepipeline/dl_m_bg"
+          }/ (\n` +
+          `        FILE_FORMAT => '${
+            pipeConfig.file_format || "dlz.fmt_csv_02"
+          }',\n` +
+          `        pattern => '.*[.]${pipeConfig.pattern_type || "csv"}'\n` +
+          `      ) t\n`;
 
-    case "UDF":
-      const processNode = attachedNodes.find((n) => n?.data?.nodeType === "process");
-      const processData = processNode?.data || {};
-      const udfConfig = processData.processConfig || {};
-      const udfName = udfConfig.additionalSql 
-        ? `udf_${udfConfig.additionalSql.replace(/[^a-zA-Z0-9]/g, "_")}` 
-        : "udf_convert_datetime_to_koma";
-      const udfSchema = mergeNode?.data?.mergeConfig?.targetTableSchema || "rfz_common";
-      previewText = `CREATE OR REPLACE FUNCTION ${udfSchema}.${udfName} (${udfConfig.params || "target_datetime TIMESTAMP_LTZ(0)"}) \n` +
-                    `RETURNS NUMBER(10,2)\n` +
-                    `COMMENT = '${mergeNode?.data?.mergeConfig?.comment || "日時-コマ変換"}'\n` +
-                    `AS\n` +
-                    `'${udfConfig.additionalSql || "HOUR(CONVERT_TIMEZONE('Asia/Tokyo', target_datetime)) * 2 + IFF(MINUTE(CONVERT_TIMEZONE('Asia/Tokyo', target_datetime)) >= 30, 1, 0) + 1"}';\n`;
-      break;
+        // Add GROUP BY if present
+        if (groupByFields.length > 0) {
+          const validGroupByFields = groupByFields.filter((field) => field);
+          if (validGroupByFields.length > 0) {
+            previewText += `    GROUP BY ${validGroupByFields.join(", ")}\n`;
+          }
+        }
 
-    default:
-      previewText = "No valid object type selected.";
-  }
-  return previewText;
-};
+        previewText += `  );\n`;
+        break;
+
+      case "UDF":
+        const processNode = attachedNodes.find(
+          (n) => n?.data?.nodeType === "process"
+        );
+        const processData = processNode?.data || {};
+        const udfConfig = processData.processConfig || {};
+        const udfName = udfConfig.additionalSql
+          ? `udf_${udfConfig.additionalSql.replace(/[^a-zA-Z0-9]/g, "_")}`
+          : "udf_convert_datetime_to_koma";
+        const udfSchema =
+          mergeNode?.data?.mergeConfig?.targetTableSchema || "rfz_common";
+        previewText =
+          `CREATE OR REPLACE FUNCTION ${udfSchema}.${udfName} (${
+            udfConfig.params || "target_datetime TIMESTAMP_LTZ(0)"
+          }) \n` +
+          `RETURNS NUMBER(10,2)\n` +
+          `COMMENT = '${
+            mergeNode?.data?.mergeConfig?.comment || "日時-コマ変換"
+          }'\n` +
+          `AS\n` +
+          `'${
+            udfConfig.additionalSql ||
+            "HOUR(CONVERT_TIMEZONE('Asia/Tokyo', target_datetime)) * 2 + IFF(MINUTE(CONVERT_TIMEZONE('Asia/Tokyo', target_datetime)) >= 30, 1, 0) + 1"
+          }';\n`;
+        break;
+
+      default:
+        previewText = "No valid object type selected.";
+    }
+    return previewText;
+  };
 
   const generatePreview = () => {
-  if (!selectedNode || selectedNode.data.nodeType !== "output") return;
-  const previewText = computePreview(selectedNode.id);
-  setGeneratedPreview(previewText);
-};
+    if (!selectedNode || selectedNode.data.nodeType !== "output") return;
+    const previewText = computePreview(selectedNode.id);
+    setGeneratedPreview(previewText);
+  };
 
   const onConnect = useCallback(
     (params) => {
       setEdges((eds) => addEdge(params, eds));
       const sourceNode = nodes.find((n) => n.id === params.source);
       const targetNode = nodes.find((n) => n.id === params.target);
+      if (targetNode) {
+        const allInputCells = getConnectedInputFields(params.target);
 
-      if (sourceNode?.data?.inputCells && targetNode) {
-        const updatedMap = {
-          ...inputFieldMap,
-          [params.target]: sourceNode.data.inputCells,
-        };
-        setInputFieldMap(updatedMap);
+        setInputFieldMap((prev) => ({
+          ...prev,
+          [params.target]: allInputCells,
+        }));
+
         updateNodeData(params.target, {
-          inputCells: sourceNode.data.inputCells,
+          inputCells: allInputCells,
         });
       }
     },
@@ -771,16 +844,16 @@ const computePreview = (nodeId, overrides = {}) => {
           });
         }
       }
-if (node.data.aggregationFields) {
-  setAggregationFields(node.data.aggregationFields);
-} else {
-  setAggregationFields([]);
-}
-if (node.data.groupByFields) {
-  setGroupByFields(node.data.groupByFields);
-} else {
-  setGroupByFields([]);
-}
+      if (node.data.aggregationFields) {
+        setAggregationFields(node.data.aggregationFields);
+      } else {
+        setAggregationFields([]);
+      }
+      if (node.data.groupByFields) {
+        setGroupByFields(node.data.groupByFields);
+      } else {
+        setGroupByFields([]);
+      }
       // Load existing mapping rules and config if available
       if (node.data.mappingRules) {
         setMappingRules(node.data.mappingRules);
@@ -814,7 +887,7 @@ if (node.data.groupByFields) {
     },
     [nodes, edges]
   );
-const getUpstreamNodes = (nodeId) => {
+  const getUpstreamNodes = (nodeId) => {
     let upstream = [];
     const traverse = (id) => {
       const incomingEdges = edges.filter((edge) => edge.target === id);
@@ -838,7 +911,7 @@ const getUpstreamNodes = (nodeId) => {
         parameters: {},
         customProcedureCall: "",
         additionalSql: "",
-      procedureCall: "",
+        procedureCall: "",
       });
     } else {
       const selectedProc = validationSubprocedures.find(
@@ -852,23 +925,23 @@ const getUpstreamNodes = (nodeId) => {
           initialParams[param.name] = "";
         });
 
-      const initialProcedureCall = `${procedureName}(${selectedProc.parameters
-        .map((param) => `${param.name} => ''`)
-        .join(", ")})`;
+        const initialProcedureCall = `${procedureName}(${selectedProc.parameters
+          .map((param) => `${param.name} => ''`)
+          .join(", ")})`;
         setValidationConfig({
           selectedProcedure: procedureName,
           parameters: initialParams,
-        procedureCall: initialProcedureCall,
+          procedureCall: initialProcedureCall,
         });
       }
     }
   };
-const handleProcedureCallChange = (e) => {
-  setValidationConfig((prev) => ({
-    ...prev,
-    procedureCall: e.target.value,
-  }));
-};
+  const handleProcedureCallChange = (e) => {
+    setValidationConfig((prev) => ({
+      ...prev,
+      procedureCall: e.target.value,
+    }));
+  };
   const updateValidationParameter = (paramName, value) => {
     setValidationConfig((prev) => ({
       ...prev,
@@ -888,26 +961,32 @@ const handleProcedureCallChange = (e) => {
 
   // Function to get input fields from connected nodes
   const getConnectedInputFields = (nodeId) => {
-    // Find all edges where this node is the target
-    const incomingEdges = edges.filter((edge) => edge.target === nodeId);
+    const visited = new Set();
+    const collected = [];
 
-    // Get all source nodes
-    const sourceNodeIds = incomingEdges.map((edge) => edge.source);
+    const traverse = (id) => {
+      if (visited.has(id)) return;
+      visited.add(id);
 
-    // Get all input fields from source nodes
-    let allInputFields = [];
-    sourceNodeIds.forEach((sourceId) => {
-      const sourceNode = nodes.find((node) => node.id === sourceId);
-      if (
-        sourceNode &&
-        sourceNode.data.nodeType === "input" &&
-        sourceNode.data.inputCells
-      ) {
-        allInputFields = [...allInputFields, ...sourceNode.data.inputCells];
-      }
-    });
+      const incoming = edges.filter((edge) => edge.target === id);
+      incoming.forEach((edge) => {
+        const sourceNode = nodes.find((node) => node.id === edge.source);
+        if (sourceNode) {
+          // If it's an input node, collect its fields
+          if (
+            sourceNode.data.nodeType === "input" &&
+            Array.isArray(sourceNode.data.inputCells)
+          ) {
+            collected.push(...sourceNode.data.inputCells);
+          }
+          // Traverse upstream recursively
+          traverse(sourceNode.id);
+        }
+      });
+    };
 
-    return allInputFields;
+    traverse(nodeId);
+    return Array.from(new Set(collected)); // remove duplicates
   };
 
   const onNodeDragStart = (event, node) => {
@@ -942,7 +1021,7 @@ const handleProcedureCallChange = (e) => {
     joinType: "INNER",
     useJoin: true,
     whereClause: "",
-      previewMergeQuery: "",
+    previewMergeQuery: "",
   });
 
   const [customValues, setCustomValues] = useState({
@@ -952,7 +1031,7 @@ const handleProcedureCallChange = (e) => {
 
   const handleMergeChange = (e) => {
     const { name, value } = e.target;
-      setMergeConfig((prev) => ({ ...prev, [name]: value, }));
+    setMergeConfig((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleToggleField = (fieldType, field) => {
@@ -996,33 +1075,32 @@ const handleProcedureCallChange = (e) => {
   };
 
   const saveMergeConfig = () => {
-  if (selectedNode) {
-    const procedureName = mergeConfig.targetTable
-      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-      : "usp_default";
-    const processId = mergeConfig.targetTable
-      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-      : "usp_default";
-    const savedData = {
-      mergeConfig: { ...mergeConfig },
-      procedureName,
-      processId,
-    };
-     updateNodeData(selectedNode.id, {
-      mergeConfig: { ...mergeConfig },
-      processId,
-    });    // debugging
-    //console.log("Saved Merge Node Data:", savedData);
-    setMergeConfig((prev) => ({
-      ...prev,
-      previewMergeQuery: generateMergeQuery(),
-    }));
-    setIsModalOpen(false);
-  } else {
-    console.error("No selected node available to save merge config.");
-  }
-  
-};
+    if (selectedNode) {
+      const procedureName = mergeConfig.targetTable
+        ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : "usp_default";
+      const processId = mergeConfig.targetTable
+        ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : "usp_default";
+      const savedData = {
+        mergeConfig: { ...mergeConfig },
+        procedureName,
+        processId,
+      };
+      updateNodeData(selectedNode.id, {
+        mergeConfig: { ...mergeConfig },
+        processId,
+      }); // debugging
+      //console.log("Saved Merge Node Data:", savedData);
+      setMergeConfig((prev) => ({
+        ...prev,
+        previewMergeQuery: generateMergeQuery(),
+      }));
+      setIsModalOpen(false);
+    } else {
+      console.error("No selected node available to save merge config.");
+    }
+  };
 
   const generateMergeQuery = () => {
     const currentDate = new Date().toLocaleString("en-US", {
@@ -1094,7 +1172,7 @@ const handleProcedureCallChange = (e) => {
           ? [`target.process_id = '${processId}'`]
           : []
       )
-      .join(", "); 
+      .join(", ");
 
     const notMatchedInsertsStr = mergeConfig.notMatchedInserts
       .map((field) => field)
@@ -1135,7 +1213,11 @@ MERGE INTO ${mergeConfig.targetTable || "targetTable"} AS target
 USING (${sourceQuery}) AS source
 ${onClause}
 ${matchedUpdatesStr ? `WHEN MATCHED THEN UPDATE SET ${matchedUpdatesStr} ` : ""}
-${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr}) VALUES (${notMatchedValuesStr})` : ""};
+${
+  notMatchedInsertsStr
+    ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr}) VALUES (${notMatchedValuesStr})`
+    : ""
+};
 `;
   };
 
@@ -1143,8 +1225,8 @@ ${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr})
     if (!selectedNode) return null;
     switch (selectedNode.data.nodeType) {
       case "input":
-  // Handle changes to input cells (for CSV mode)
-  return (
+        // Handle changes to input cells (for CSV mode)
+        return (
           <InputConfigModal
             setInputCells={setInputCells}
             inputType={inputType}
@@ -1159,7 +1241,7 @@ ${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr})
           />
         );
       case "Snowpipe":
-              return (
+        return (
           <SnowpipeMappingSection
             snowpipeConfig={snowpipeConfig}
             setSnowpipeConfig={setSnowpipeConfig}
@@ -1170,7 +1252,6 @@ ${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr})
             deleteMappingRule={deleteMappingRule}
           />
         );
-
 
       case "merge":
         const availableFields = getConnectedInputFields(selectedNode.id) || [];
@@ -1189,23 +1270,23 @@ ${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr})
           : `SELECT ${
               availableFields.length > 0 ? availableFields.join(", ") : "*"
             } FROM ${mergeConfig.sourceTable || "<sourceTable>"}`;
-          
-            const saveMergeConfig = () => {
-  if (selectedNode) {
-    updateNodeData(selectedNode.id, {
-      mergeConfig: { ...mergeConfig },
-      processId,
-    });
-    console.log("Saved Merge Data:", {
-      mergeConfig: { ...mergeConfig },
-      procedureName,
-      processId,
-    });
-    setIsModalOpen(false);
-  }
-};
+
+        const saveMergeConfig = () => {
+          if (selectedNode) {
+            updateNodeData(selectedNode.id, {
+              mergeConfig: { ...mergeConfig },
+              processId,
+            });
+            console.log("Saved Merge Data:", {
+              mergeConfig: { ...mergeConfig },
+              procedureName,
+              processId,
+            });
+            setIsModalOpen(false);
+          }
+        };
         return (
-                    <MergeConfigModal
+          <MergeConfigModal
             mergeConfig={mergeConfig}
             setMergeConfig={setMergeConfig}
             selectedNode={selectedNode}
@@ -1250,234 +1331,247 @@ ${notMatchedInsertsStr ? `WHEN NOT MATCHED THEN INSERT (${notMatchedInsertsStr})
           <AggregationModal selectedNode={selectedNode} setNodes={setNodes} />
         );
       case "output":
-  const attachedNodes = getUpstreamNodes(selectedNode.id);
-  return (
-    <>
-    <div
-      style={{
-        background: "#f0f9ff",
-        padding: "15px",
-        borderRadius: "8px",
-        marginBottom: "20px",
-        border: "1px solid #bae6fd",
-      }}
-    >
-      <h4
-        style={{
-          margin: "0 0 15px 0",
-          fontSize: "16px",
-          color: "#0369a1",
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        <span style={{ marginRight: "8px", fontSize: "18px" }}>
-          📤
-        </span>
-        Output Preview
-      </h4>
+        const attachedNodes = getUpstreamNodes(selectedNode.id);
+        return (
+          <>
+            <div
+              style={{
+                background: "#f0f9ff",
+                padding: "15px",
+                borderRadius: "8px",
+                marginBottom: "20px",
+                border: "1px solid #bae6fd",
+              }}
+            >
+              <h4
+                style={{
+                  margin: "0 0 15px 0",
+                  fontSize: "16px",
+                  color: "#0369a1",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ marginRight: "8px", fontSize: "18px" }}>📤</span>
+                Output Preview
+              </h4>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-        <div>
-          <label
-            style={{
-              display: "block",
-              marginBottom: "6px",
-              fontSize: "14px",
-              fontWeight: 500,
-              color: "#334155",
-            }}
-          >
-            Attached Nodes
-          </label>
-          <div
-            style={{
-              padding: "10px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "6px",
-              minHeight: "100px",
-              backgroundColor: "#f8fafc",
-              color: "#334155",
-              fontSize: "14px",
-              overflowY: "auto",
-            }}
-          >
-            {attachedNodes.length > 0 ? (
-              <ul style={{ margin: 0, paddingLeft: "20px" }}>
-                {attachedNodes.map((node, index) => (
-                    <li key={index}>
-                      {node.data.nodeType} Node
-                    </li>
-                ))}
-              </ul>
-            ) : (
-                <p>No nodes attached yet. Attach input, Snowpipe, process, validation, or merge nodes.</p>
-            )}
-          </div>
-        </div>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 15 }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "6px",
+                      fontSize: "14px",
+                      fontWeight: 500,
+                      color: "#334155",
+                    }}
+                  >
+                    Attached Nodes
+                  </label>
+                  <div
+                    style={{
+                      padding: "10px",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "6px",
+                      minHeight: "100px",
+                      backgroundColor: "#f8fafc",
+                      color: "#334155",
+                      fontSize: "14px",
+                      overflowY: "auto",
+                    }}
+                  >
+                    {attachedNodes.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                        {attachedNodes.map((node, index) => (
+                          <li key={index}>{node.data.nodeType} Node</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>
+                        No nodes attached yet. Attach input, Snowpipe, process,
+                        validation, or merge nodes.
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-        <div>
-          <label
-            style={{
-              display: "block",
-              marginBottom: "6px",
-              fontSize: "14px",
-              fontWeight: 500,
-              color: "#334155",
-            }}
-          >
-            Generated Object Preview
-          </label>
-          <textarea
-              value={generatedPreview}
-              readOnly={true}
-              placeholder="Generated SQL preview will appear here..."
-            style={{
-              width: "100%",
-              minHeight: "200px",
-              padding: "10px",
-              borderRadius: "6px",
-              border: "1px solid #cbd5e1",
-              fontSize: "14px",
-              fontFamily: "monospace",
-              backgroundColor: "#f8fafc",
-              color: "#334155",
-              resize: "vertical",
-                cursor: "not-allowed",
-            }}
-          />
-          <button
-            onClick={generatePreview}
-            style={{
-              marginTop: "10px",
-              padding: "8px 16px",
-              background: "#10b981",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Generate Preview
-          </button>
-        </div>
-      </div>
-    </div>
-    </>
-  );
-        
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "6px",
+                      fontSize: "14px",
+                      fontWeight: 500,
+                      color: "#334155",
+                    }}
+                  >
+                    Generated Object Preview
+                  </label>
+                  <textarea
+                    value={generatedPreview}
+                    readOnly={true}
+                    placeholder="Generated SQL preview will appear here..."
+                    style={{
+                      width: "100%",
+                      minHeight: "200px",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: "1px solid #cbd5e1",
+                      fontSize: "14px",
+                      fontFamily: "monospace",
+                      backgroundColor: "#f8fafc",
+                      color: "#334155",
+                      resize: "vertical",
+                      cursor: "not-allowed",
+                    }}
+                  />
+                  <button
+                    onClick={generatePreview}
+                    style={{
+                      marginTop: "10px",
+                      padding: "8px 16px",
+                      background: "#10b981",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "6px",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Generate Preview
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+
       default:
         return <p>No modal for this type.</p>;
     }
   };
 
   const saveNodeData = () => {
-  if (!selectedNode) {
-    console.error("No selected node available to save data.");
-    return;
-  }
-  let procedureName = "usp_default";
-  let processId = "usp_default";
-  if (selectedNode.data.nodeType === "merge") {
-    procedureName = mergeConfig.targetTable
-      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-      : "usp_default";
-    processId = mergeConfig.targetTable
-      ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
-      : "usp_default";
-  }
+    if (!selectedNode) {
+      console.error("No selected node available to save data.");
+      return;
+    }
+    let procedureName = "usp_default";
+    let processId = "usp_default";
+    if (selectedNode.data.nodeType === "merge") {
+      procedureName = mergeConfig.targetTable
+        ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : "usp_default";
+      processId = mergeConfig.targetTable
+        ? `usp_${mergeConfig.targetTable.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : "usp_default";
+    }
 
-  switch (selectedNode.data.nodeType) {
-  case "input":
-    // Assume inputCells is the state variable holding the updated columns
-    const updated = inputCells || []; // Default to empty array if undefined
-    updateNodeData(selectedNode.id, {
-      inputCells: updated,
-      outputs: { columns: updated, process_id: inputFieldMap.process_id, output_table_name: inputFieldMap.output_table_name, output_table_zone: inputFieldMap.output_table_zone },
-    });
-    break;
+    switch (selectedNode.data.nodeType) {
+      case "input":
+        // Assume inputCells is the state variable holding the updated columns
+        const updated = inputCells || []; // Default to empty array if undefined
+        updateNodeData(selectedNode.id, {
+          inputCells: updated,
+          outputs: {
+            columns: updated,
+            process_id: inputFieldMap.process_id,
+            output_table_name: inputFieldMap.output_table_name,
+            output_table_zone: inputFieldMap.output_table_zone,
+          },
+        });
+        break;
 
-  case "Snowpipe":
-    updateNodeData(selectedNode.id, {
-      snowpipeConfig,
-      mappingRules,
-      aggregationFields,
-      groupByFields,
-    });
-    break;
+      case "Snowpipe":
+        updateNodeData(selectedNode.id, {
+          snowpipeConfig,
+          mappingRules,
+          aggregationFields,
+          groupByFields,
+        });
+        break;
 
-  case "validation":
-    updateNodeData(selectedNode.id, {
-      validationConfig,
-      outputs: { parameters: validationConfig.parameters },
-    });
-    break;
+      case "validation":
+        updateNodeData(selectedNode.id, {
+          validationConfig,
+          outputs: { parameters: validationConfig.parameters },
+        });
+        break;
 
-  case "merge":
-    updateNodeData(selectedNode.id, {
-      mergeConfig,
-      outputs: { mergedColumns: mergeConfig.columns, process_id: mergeConfig.process_id, output_table_name: mergeConfig.targetTable, output_table_zone: mergeConfig.targetZone },
-    });
-    break;
+      case "merge":
+        updateNodeData(selectedNode.id, {
+          mergeConfig,
+          outputs: {
+            mergedColumns: mergeConfig.columns,
+            process_id: mergeConfig.process_id,
+            output_table_name: mergeConfig.targetTable,
+            output_table_zone: mergeConfig.targetZone,
+          },
+        });
+        break;
 
-  case "output":
-    // Save the current generated preview when closing the output config modal
-    updateNodeData(selectedNode.id, { generatedPreview });
-    break;
+      case "output":
+        // Save the current generated preview when closing the output config modal
+        updateNodeData(selectedNode.id, { generatedPreview });
+        break;
 
-  default:
-    console.warn(`No save logic defined for node type: ${selectedNode.data.nodeType}`);
-}
-setIsModalOpen(false);
-};
+      default:
+        console.warn(
+          `No save logic defined for node type: ${selectedNode.data.nodeType}`
+        );
+    }
+    setIsModalOpen(false);
+  };
 
   const isValidConnection = (connection) => {
     const sourceNode = nodes.find((node) => node.id === connection.source);
     const targetNode = nodes.find((node) => node.id === connection.target);
     if (!sourceNode || !targetNode) return false;
-  // Allow any node to connect to any other node
-      return true;
-};
+    // Allow any node to connect to any other node
+    return true;
+  };
   const handleGenerateCode = async () => {
-  if (!nodes.length) {
-    setError("Please add at least one node to the flow");
-    return;
-  }
-
-  setLoading(true);
-  setError("");
-
-  try {
-    const outputNode = nodes.find((node) => node.data.nodeType === "output");
-    if (!outputNode) {
-      throw new Error("Please add an output node to the flow");
+    if (!nodes.length) {
+      setError("Please add at least one node to the flow");
+      return;
     }
 
-    setOutputNodeId(outputNode.id);
+    setLoading(true);
+    setError("");
 
-    // Always compute the latest preview for real-time updates
-    const latestPreview = computePreview(outputNode.id);
+    try {
+      const outputNode = nodes.find((node) => node.data.nodeType === "output");
+      if (!outputNode) {
+        throw new Error("Please add an output node to the flow");
+      }
 
-    // Update the node with the latest generated preview
-    updateNodeData(outputNode.id, { generatedPreview: latestPreview });
+      setOutputNodeId(outputNode.id);
 
-    // Use editedCode if it exists, otherwise the latest preview
-    const initialCode = outputNode.data.editedCode || latestPreview;
-    setFinalCode(initialCode);
+      // Always compute the latest preview for real-time updates
+      const latestPreview = computePreview(outputNode.id);
 
-    // Parse initial constants for the form
-    const parsed = parseConstants(initialCode);
-    setEditableConsts(parsed);
+      // Update the node with the latest generated preview
+      updateNodeData(outputNode.id, { generatedPreview: latestPreview });
 
-    setIsFinalCodeModalOpen(true);
-  } catch (err) {
-    setError(err.message || "Error generating code");
-    console.error(err);
-  } finally {
-    setLoading(false);
-  }
-};
+      // Use editedCode if it exists, otherwise the latest preview
+      const initialCode = outputNode.data.editedCode || latestPreview;
+      setFinalCode(initialCode);
+
+      // Parse initial constants for the form
+      const parsed = parseConstants(initialCode);
+      setEditableConsts(parsed);
+
+      setIsFinalCodeModalOpen(true);
+    } catch (err) {
+      setError(err.message || "Error generating code");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div
@@ -1598,7 +1692,6 @@ setIsModalOpen(false);
           overflow: "hidden",
         }}
       >
-      
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1662,58 +1755,63 @@ setIsModalOpen(false);
           />
           <Background variant="dots" gap={12} size={1} color="#e2e8f0" />
           <Panel position="top-right">
-  <button
-    onClick={handleGenerateCode}
-    style={{
-      backgroundColor: "#3b82f6",
-      color: "white",
-      border: "none",
-      padding: "8px 16px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      fontWeight: 500,
-      cursor: "pointer",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: "8px",
-      boxShadow: "0 2px 4px rgba(59,130,246,0.3)",
-      transition: "all 0.2s",
-    }}
-    disabled={loading}
-    onMouseEnter={(e) => { e.target.style.transform = "scale(1.05)"; }} // Creative hover animation
-    onMouseLeave={(e) => { e.target.style.transform = "scale(1)"; }}
-  >
-    {loading ? (
-      <>
-        <svg
-          style={{
-            width: "20px",
-            height: "20px",
-            animation: "spin 1s linear infinite",
-          }}
-          viewBox="0 0 24 24"
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-            fill="none"
-            strokeDasharray="30 30"
-          />
-        </svg>
-        Generating...
-      </>
-    ) : (
-      <>
-        <span style={{ animation: "pulse 2s infinite" }}>✨</span> {/* Dynamic icon pulse for creativity */}
-        Generate Code
-      </>
-    )}
-  </button>
-</Panel>
+            <button
+              onClick={handleGenerateCode}
+              style={{
+                backgroundColor: "#3b82f6",
+                color: "white",
+                border: "none",
+                padding: "8px 16px",
+                borderRadius: "8px",
+                fontSize: "14px",
+                fontWeight: 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                boxShadow: "0 2px 4px rgba(59,130,246,0.3)",
+                transition: "all 0.2s",
+              }}
+              disabled={loading}
+              onMouseEnter={(e) => {
+                e.target.style.transform = "scale(1.05)";
+              }} // Creative hover animation
+              onMouseLeave={(e) => {
+                e.target.style.transform = "scale(1)";
+              }}
+            >
+              {loading ? (
+                <>
+                  <svg
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      animation: "spin 1s linear infinite",
+                    }}
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      fill="none"
+                      strokeDasharray="30 30"
+                    />
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span style={{ animation: "pulse 2s infinite" }}>✨</span>{" "}
+                  {/* Dynamic icon pulse for creativity */}
+                  Generate Code
+                </>
+              )}
+            </button>
+          </Panel>
           {error && (
             <Panel position="top-center">
               <div
@@ -1892,332 +1990,339 @@ setIsModalOpen(false);
             </div>
           </div>
         </div>
-        
       )}
       {isFinalCodeModalOpen && (
-  <div
-    className="modal-overlay"
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      background: "rgba(15,23,42,0.6)",
-      backdropFilter: "blur(4px)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-    }}
-  >
-    <div
-      className="modal"
-      style={{
-        background: "white",
-        padding: 30,
-        borderRadius: 12,
-        width: 900,
-        maxHeight: "85vh",
-        overflowY: "auto",
-        boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-        border: "1px solid #e2e8f0",
-        animation: "fadeInScale 0.2s ease-out",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-          paddingBottom: 15,
-          borderBottom: "1px solid #f1f5f9",
-        }}
-      >
-        <h3
+        <div
+          className="modal-overlay"
           style={{
-            margin: 0,
-            color: "#1e293b",
-            fontSize: "18px",
-            fontWeight: 600,
-          }}
-        >
-          <span
-            style={{
-              display: "inline-block",
-              marginRight: 10,
-              width: 24,
-              height: 24,
-              background: "#2f54eb",
-              borderRadius: "50%",
-              verticalAlign: "middle",
-            }}
-          ></span>
-          Final Generated Code
-        </h3>
-        <button
-          onClick={() => setIsFinalCodeModalOpen(false)}
-          style={{
-            background: "none",
-            border: "none",
-            fontSize: "20px",
-            cursor: "pointer",
-            color: "#94a3b8",
-            width: 30,
-            height: 30,
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(15,23,42,0.6)",
+            backdropFilter: "blur(4px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: "50%",
-            transition: "all 0.2s",
+            zIndex: 1000,
           }}
         >
-          ×
-        </button>
-      </div>
-      {objectType === "USP" && (
-        <div
-          style={{
-            background: "#f8fafc",
-            padding: "15px",
-            borderRadius: "8px",
-            marginBottom: "20px",
-            border: "1px solid #e2e8f0",
-          }}
-        >
-          <h4
-            style={{
-              margin: "0 0 15px 0",
-              fontSize: "16px",
-              color: "#0369a1",
-            }}
-          >
-            Edit variables
-          </h4>
           <div
+            className="modal"
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: "15px",
+              background: "white",
+              padding: 30,
+              borderRadius: 12,
+              width: 900,
+              maxHeight: "85vh",
+              overflowY: "auto",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              border: "1px solid #e2e8f0",
+              animation: "fadeInScale 0.2s ease-out",
             }}
           >
-            {Object.keys(editableConsts).map((key) => (
-              <div key={key}>
-                <label
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+                paddingBottom: 15,
+                borderBottom: "1px solid #f1f5f9",
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+                  color: "#1e293b",
+                  fontSize: "18px",
+                  fontWeight: 600,
+                }}
+              >
+                <span
                   style={{
-                    display: "block",
-                    marginBottom: "6px",
-                    fontSize: "14px",
-                    fontWeight: 500,
-                    color: "#334155",
+                    display: "inline-block",
+                    marginRight: 10,
+                    width: 24,
+                    height: 24,
+                    background: "#2f54eb",
+                    borderRadius: "50%",
+                    verticalAlign: "middle",
+                  }}
+                ></span>
+                Final Generated Code
+              </h3>
+              <button
+                onClick={() => setIsFinalCodeModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  color: "#94a3b8",
+                  width: 30,
+                  height: 30,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "50%",
+                  transition: "all 0.2s",
+                }}
+              >
+                ×
+              </button>
+            </div>
+            {objectType === "USP" && (
+              <div
+                style={{
+                  background: "#f8fafc",
+                  padding: "15px",
+                  borderRadius: "8px",
+                  marginBottom: "20px",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <h4
+                  style={{
+                    margin: "0 0 15px 0",
+                    fontSize: "16px",
+                    color: "#0369a1",
                   }}
                 >
-                  {key}
-                </label>
-                <input
-                  type="text"
-                  value={editableConsts[key]}
-                  onChange={(e) =>
-                    setEditableConsts((prev) => ({
-                      ...prev,
-                      [key]: e.target.value,
-                    }))
-                  }
+                  Edit variables
+                </h4>
+                <div
                   style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "6px",
-                    fontSize: "14px",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, 1fr)",
+                    gap: "15px",
                   }}
-                />
+                >
+                  {Object.keys(editableConsts).map((key) => (
+                    <div key={key}>
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: "6px",
+                          fontSize: "14px",
+                          fontWeight: 500,
+                          color: "#334155",
+                        }}
+                      >
+                        {key}
+                      </label>
+                      <input
+                        type="text"
+                        value={editableConsts[key]}
+                        onChange={(e) =>
+                          setEditableConsts((prev) => ({
+                            ...prev,
+                            [key]: e.target.value,
+                          }))
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px",
+                          border: "1px solid #cbd5e1",
+                          borderRadius: "6px",
+                          fontSize: "14px",
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setEditableConsts(parseConstants(finalCode))}
+                  style={{
+                    marginTop: "10px",
+                    padding: "8px 16px",
+                    background: "#3b82f6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                  }}
+                >
+                  Sync Variables from Code
+                </button>
+                <p
+                  style={{
+                    marginTop: "10px",
+                    fontSize: "12px",
+                    color: "#64748b",
+                  }}
+                >
+                  Edit variables here to auto-update usages in the code. Use the
+                  textarea below for other custom edits.
+                </p>
               </div>
-            ))}
+            )}
+            <div
+              style={{
+                background: "#f0f9ff",
+                padding: "15px",
+                borderRadius: "8px",
+                marginBottom: "20px",
+                border: "1px solid #bae6fd",
+              }}
+            >
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "6px",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: "#334155",
+                }}
+              >
+                Edit Your Final SQL Code
+              </label>
+              <textarea
+                value={finalCode}
+                onChange={(e) => setFinalCode(e.target.value)}
+                placeholder="Your generated SQL code will appear here for editing..."
+                style={{
+                  width: "100%",
+                  minHeight: "400px",
+                  padding: "10px",
+                  borderRadius: "6px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "14px",
+                  fontFamily: "monospace",
+                  backgroundColor: "#fff",
+                  color: "#334155",
+                  resize: "vertical",
+                  outline: "none",
+                  transition: "border-color 0.2s",
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#3b82f6";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#cbd5e1";
+                }}
+              />
+              <div
+                style={{
+                  marginTop: "10px",
+                  fontSize: "12px",
+                  color: "#64748b",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <span>
+                  💡 Tip: Use Ctrl+Z for undo. Code is auto-saved on change.
+                </span>
+              </div>
+              <div
+                style={{ marginTop: "5px", color: "#10b981", fontSize: "12px" }}
+              >
+                {saveStatus}
+              </div>
+            </div>
+            <div
+              style={{
+                marginTop: 25,
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                paddingTop: 20,
+                borderTop: "1px solid #f1f5f9",
+              }}
+            >
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => navigator.clipboard.writeText(finalCode)}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#10b981",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  📋 Copy Code
+                </button>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([finalCode], { type: "text/sql" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "generated_code.sql";
+                    a.click();
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#8b5cf6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  ⬇️ Download SQL
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <button
+                  onClick={() => setIsFinalCodeModalOpen(false)}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    color: "#475569",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    updateNodeData(outputNodeId, { editedCode: finalCode }); // Ensure final save
+                    onCodeGenerated(finalCode);
+                    setIsFinalCodeModalOpen(false);
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#3b82f6",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    boxShadow: "0 2px 5px rgba(59,130,246,0.3)",
+                  }}
+                >
+                  Generate & Close
+                </button>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={() => setEditableConsts(parseConstants(finalCode))}
-            style={{
-              marginTop: "10px",
-              padding: "8px 16px",
-              background: "#3b82f6",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Sync Variables from Code
-          </button>
-          <p
-            style={{
-              marginTop: "10px",
-              fontSize: "12px",
-              color: "#64748b",
-            }}
-          >
-            Edit variables here to auto-update usages in the code. Use the textarea below for other custom edits.
-          </p>
         </div>
       )}
-      <div
-        style={{
-          background: "#f0f9ff",
-          padding: "15px",
-          borderRadius: "8px",
-          marginBottom: "20px",
-          border: "1px solid #bae6fd",
-        }}
-      >
-        <label
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontSize: "14px",
-            fontWeight: 500,
-            color: "#334155",
-          }}
-        >
-          Edit Your Final SQL Code
-        </label>
-        <textarea
-          value={finalCode}
-          onChange={(e) => setFinalCode(e.target.value)}
-          placeholder="Your generated SQL code will appear here for editing..."
-          style={{
-            width: "100%",
-            minHeight: "400px",
-            padding: "10px",
-            borderRadius: "6px",
-            border: "1px solid #cbd5e1",
-            fontSize: "14px",
-            fontFamily: "monospace",
-            backgroundColor: "#fff",
-            color: "#334155",
-            resize: "vertical",
-            outline: "none",
-            transition: "border-color 0.2s",
-          }}
-          onFocus={(e) => { e.target.style.borderColor = "#3b82f6"; }}
-          onBlur={(e) => { e.target.style.borderColor = "#cbd5e1"; }}
-        />
-        <div
-          style={{
-            marginTop: "10px",
-            fontSize: "12px",
-            color: "#64748b",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <span>💡 Tip: Use Ctrl+Z for undo. Code is auto-saved on change.</span>
-        </div>
-        <div style={{ marginTop: "5px", color: "#10b981", fontSize: "12px" }}>
-          {saveStatus}
-        </div>
-      </div>
-      <div
-        style={{
-          marginTop: 25,
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          paddingTop: 20,
-          borderTop: "1px solid #f1f5f9",
-        }}
-      >
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => navigator.clipboard.writeText(finalCode)}
-            style={{
-              padding: "8px 16px",
-              background: "#10b981",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            📋 Copy Code
-          </button>
-          <button
-            onClick={() => {
-              const blob = new Blob([finalCode], { type: "text/sql" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = "generated_code.sql";
-              a.click();
-            }}
-            style={{
-              padding: "8px 16px",
-              background: "#8b5cf6",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            ⬇️ Download SQL
-          </button>
-        </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button
-            onClick={() => setIsFinalCodeModalOpen(false)}
-            style={{
-              padding: "8px 16px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 500,
-              color: "#475569",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              updateNodeData(outputNodeId, { editedCode: finalCode }); // Ensure final save
-              onCodeGenerated(finalCode);
-              setIsFinalCodeModalOpen(false);
-            }}
-            style={{
-              padding: "8px 16px",
-              background: "#3b82f6",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: 500,
-              boxShadow: "0 2px 5px rgba(59,130,246,0.3)",
-            }}
-          >
-            Generate & Close
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
     </div>
   );
 }
-
 
 function getNodeTypeColor(nodeType) {
   const colorMap = {
