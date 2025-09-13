@@ -862,7 +862,10 @@ function FlowCanvas({ onCodeGenerated, objectType }) {
       }
 
       if (node.data.snowpipeConfig) {
-        setSnowpipeConfig(node.data.snowpipeConfig);
+        setSnowpipeConfig(node.data.snowpipeConfig || {});
+        setMappingRules(node.data.mappingRules || []);
+        setAggregationFields(node.data.aggregationFields || []);
+        setGroupByFields(node.data.groupByFields || []);
       } else {
         setSnowpipeConfig({
           process_id: "",
@@ -1248,8 +1251,15 @@ ${
             mappingRules={mappingRules}
             setMappingRules={setMappingRules}
             selectedNode={selectedNode}
-            addMappingRule={addMappingRule}
-            deleteMappingRule={deleteMappingRule}
+            addMappingRule={() =>
+              setMappingRules([
+                ...mappingRules,
+                { input_Name: "", output_Name: "" },
+              ])
+            }
+            deleteMappingRule={(index) =>
+              setMappingRules(mappingRules.filter((_, i) => i !== index))
+            }
           />
         );
 
