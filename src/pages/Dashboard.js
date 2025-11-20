@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
+import * as XLSX from "xlsx";
 import Header from "../components/Header";
 import GeneratedCode from "../components/GeneratedCode";
 import DeploymentManager from "../components/DeploymentManager";
@@ -9,7 +10,7 @@ import Tabs from "../components/Tabs";
 import "../css/Dashboard.css";
 import ProcessFlow from "../components/ProcessFlow";
 import DrawProcess from "../components/DrawProcess";
-
+import DashboardPipelineGenerator from "../components/DashboardPipelineGenerator.tsx";
 import { useGeneratedFiles } from "../hooks/GeneratedFilesContext";
 
 export default function Dashboard() {
@@ -26,8 +27,36 @@ export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [udfType, setUdfType] = useState("js");
   const [activeProject, setActiveProject] = useState(null);
+  const [uploadedFile, setUploadedFile] = useState(null);
   const { generatedFilesContext, setGeneratedFilesContext } =
     useGeneratedFiles();
+
+  useEffect(() => {
+    if (!generatedFiles.length) {
+      return;
+    }
+
+    setGeneratedFilesContext((prev = []) => {
+      let changed = false;
+      const filesMap = new Map(prev.map((file) => [file.name, file]));
+
+      generatedFiles.forEach((file) => {
+        const existing = filesMap.get(file.name);
+        const isSameContent = existing?.content === file.content;
+
+        if (!existing || !isSameContent) {
+          changed = true;
+          filesMap.set(file.name, file);
+        }
+      });
+
+      if (!changed) {
+        return prev;
+      }
+
+      return Array.from(filesMap.values());
+    });
+  }, [generatedFiles, setGeneratedFilesContext]);
 
   const handleDownloadAll = () => {
     if (generatedFiles.length === 0) {
@@ -62,29 +91,95 @@ export default function Dashboard() {
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
-      const formData = new FormData();
-      formData.append("file", file);
+    if (!file) {
+      return;
+    }
 
-      try {
-        const response = await axios.post(
-          "http://127.0.0.1:8000/get-sheet-names/",
-          formData,
-          {
-            headers: {
-              "Content-Type": "multipart/form-data",
-            },
-          }
-        );
+    setFileName(file.name);
+    setUploadedFile(file);
+    setError("");
+    setSelectedSheets([]);
 
-        console.log("Sheet Names from Backend:", response.data.sheet_names); // Debug log
-        setSheetNames(response.data.sheet_names);
-        setIsModalOpen(true);
-      } catch (err) {
-        setError("Failed to retrieve sheet names. Please try again.");
-        console.error(err);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const names = (workbook.SheetNames || []).filter(
+        (name) => typeof name === "string" && name.trim().length > 0
+      );
+
+      if (!names.length) {
+        setError("No sheets were found in the uploaded workbook.");
+        setSheetNames([]);
+        return;
       }
+
+      setSheetNames(names);
+      setIsModalOpen(true);
+    } catch (err) {
+      console.error("Failed to read workbook:", err);
+      setError("Unable to read the Excel file. Please verify the format.");
+      setSheetNames([]);
+    }
+  };
+
+  const buildUploadFileForSelectedSheets = async () => {
+    if (!uploadedFile) {
+      return { file: null, name: "" };
+    }
+
+    const originalName = uploadedFile.name || "specification.xlsx";
+    const isExcel = /\.(xlsx|xls)$/i.test(originalName);
+    if (!isExcel || !selectedSheets.length) {
+      return { file: uploadedFile, name: originalName };
+    }
+
+    try {
+      const data = await uploadedFile.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const trimmedWorkbook = XLSX.utils.book_new();
+      let appendedSheets = 0;
+
+      selectedSheets.forEach((sheetName) => {
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) {
+          return;
+        }
+
+        const rows = XLSX.utils.sheet_to_json(sheet, {
+          header: 1,
+          blankrows: false,
+          defval: "",
+        });
+        const newSheet = XLSX.utils.aoa_to_sheet(rows.length ? rows : [[]]);
+        XLSX.utils.book_append_sheet(trimmedWorkbook, newSheet, sheetName);
+        appendedSheets += 1;
+      });
+
+      if (!appendedSheets) {
+        return { file: uploadedFile, name: originalName };
+      }
+
+      const buffer = XLSX.write(trimmedWorkbook, {
+        bookType: "xlsx",
+        type: "array",
+        compression: true,
+      });
+
+      const baseName = originalName.replace(/\.[^.]+$/, "");
+      const suffix = appendedSheets === 1 ? selectedSheets[0] : "selected";
+      const trimmedName = `${baseName}_${suffix}.xlsx`;
+      const mimeType =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+      const trimmedFile =
+        typeof File === "function"
+          ? new File([buffer], trimmedName, { type: mimeType })
+          : new Blob([buffer], { type: mimeType });
+
+      return { file: trimmedFile, name: trimmedName };
+    } catch (err) {
+      console.error("Failed to trim workbook to selected sheets:", err);
+      return { file: uploadedFile, name: originalName };
     }
   };
 
@@ -94,111 +189,124 @@ export default function Dashboard() {
       return;
     }
 
+    if (!uploadedFile) {
+      setError("Please upload a specification file before generating code.");
+      return;
+    }
+
     setError("");
     setGeneratedFiles([]);
     setLoading(true);
 
-    const formData = new FormData();
-    const fileInput = document.getElementById("file-upload");
-    if (!fileInput || !fileInput.files.length) {
-      console.error("No file uploaded!");
-      return;
-    }
+    try {
+      const { file: uploadFile, name: uploadFileName } =
+        await buildUploadFileForSelectedSheets();
 
-    if (objectType === "USP") {
-      formData.append("file", fileInput.files[0]);
-      formData.append("sheet_name", selectedSheets[0]);
-      for (let [key, value] of formData.entries()) {
-        console.log(`${key}:`, value);
+      if (!uploadFile) {
+        setError("The selected file could not be prepared for upload.");
+        return;
       }
-      try {
-        const response = await axios.post(
-          "http://127.0.0.1:8000/generate-usp-from-sheet/",
-          formData
-        );
 
-        setGeneratedFiles([
-          {
-            name: `${selectedSheets[0]}_usp.sql`,
-            content: response.data.usp_template,
-          },
-        ]);
-      } catch (err) {
-        setError("Error generating USP.");
-        console.error(err);
-      }
-    } else if (objectType === "PIPE") {
-      formData.append("file", fileInput.files[0]);
-      formData.append("sheet_name", selectedSheets[0]);
-      for (let [key, value] of formData.entries()) {
-        console.log(`${key}:`, value);
-      }
-      try {
-        const response = await axios.post(
-          "http://127.0.0.1:8000/generate-pipe/",
-          formData
-        );
+      const buildFormData = () => {
+        const form = new FormData();
+        const name =
+          uploadFileName || uploadFile?.name || "selected_sheets.xlsx";
+        form.append("file", uploadFile, name);
+        return form;
+      };
 
-        setGeneratedFiles([
-          {
-            name: `${selectedSheets[0]}.sql`,
-            content: response.data.pipe,
-          },
-        ]);
-      } catch (err) {
-        setError("Error generating USP.");
-        console.error(err);
-      }
-    } else if (objectType === "UDF") {
-      formData.append("file", fileInput.files[0]);
-      console.log("Selected Sheet for UDF:", selectedSheets[0]); // Debug log
-      formData.append("sheet_name", selectedSheets[0]);
-      const endpoint =
-        udfType === "js"
-          ? "http://127.0.0.1:8000/generate-js-udf-from-sheet/"
-          : "http://127.0.0.1:8000/generate-sql-udf-from-sheet/";
+      if (objectType === "USP") {
+        const formData = buildFormData();
+        formData.append("sheet_name", selectedSheets[0]);
+        try {
+          const response = await axios.post(
+            "http://127.0.0.1:8000/generate-usp-from-sheet/",
+            formData
+          );
 
-      try {
-        const response = await axios.post(endpoint, formData);
-        console.log("Full Response Data:", response.data); // Debug log
-        let content = response.data.udf_template || ""; // Use udf_template as the primary source
-        if (content.startsWith("```") && content.endsWith("```")) {
-          content = content.split("\n").slice(1, -1).join("\n").trim();
+          setGeneratedFiles([
+            {
+              name: `${selectedSheets[0]}_usp.sql`,
+              content: response.data.usp_template,
+            },
+          ]);
+        } catch (err) {
+          setError("Error generating USP.");
+          console.error(err);
+          return;
         }
-        const generatedFile = {
-          name: `${selectedSheets[0]}_udf_${udfType}.sql`,
-          content: content,
-        };
-        setGeneratedFiles([generatedFile]);
-        console.log("Generated File Before Set:", [generatedFile]);
-      } catch (err) {
-        setError(`Error generating ${udfType.toUpperCase()} UDF.`);
-        console.error(err);
-      }
-    } else {
-      formData.append("file", fileInput.files[0]);
-      formData.append("sheets", JSON.stringify(selectedSheets));
-      try {
-        const response = await axios.post(
-          "http://127.0.0.1:8000/generate-ddl-from-design/",
-          formData
-        );
-        console.log(response.data);
-        const ddlFiles = response.data.ddls;
+      } else if (objectType === "PIPE") {
+        const formData = buildFormData();
+        formData.append("sheet_name", selectedSheets[0]);
+        try {
+          const response = await axios.post(
+            "http://127.0.0.1:8000/generate-pipe/",
+            formData
+          );
 
-        setGeneratedFiles(
-          ddlFiles.map((ddl, index) => ({
-            name: `${selectedSheets[index]}_generated.sql`,
-            content: ddl,
-          }))
-        );
-      } catch (err) {
-        setError("Error generating DDL.");
-        console.error(err);
+          setGeneratedFiles([
+            {
+              name: `${selectedSheets[0]}.sql`,
+              content: response.data.pipe,
+            },
+          ]);
+        } catch (err) {
+          setError("Error generating PIPE.");
+          console.error(err);
+          return;
+        }
+      } else if (objectType === "UDF") {
+        const formData = buildFormData();
+        formData.append("sheet_name", selectedSheets[0]);
+        const endpoint =
+          udfType === "js"
+            ? "http://127.0.0.1:8000/generate-js-udf-from-sheet/"
+            : "http://127.0.0.1:8000/generate-sql-udf-from-sheet/";
+
+        try {
+          const response = await axios.post(endpoint, formData);
+          let content = response.data.udf_template || "";
+          if (content.startsWith("```") && content.endsWith("```")) {
+            content = content.split("\n").slice(1, -1).join("\n").trim();
+          }
+          const generatedFile = {
+            name: `${selectedSheets[0]}_udf_${udfType}.sql`,
+            content,
+          };
+          setGeneratedFiles([generatedFile]);
+        } catch (err) {
+          setError(`Error generating ${udfType.toUpperCase()} UDF.`);
+          console.error(err);
+          return;
+        }
+      } else {
+        const formData = buildFormData();
+        formData.append("sheets", JSON.stringify(selectedSheets));
+        try {
+          const response = await axios.post(
+            "http://127.0.0.1:8000/generate-ddl-from-design/",
+            formData
+          );
+          const ddlFiles = response.data.ddls;
+
+          setGeneratedFiles(
+            ddlFiles.map((ddl, index) => ({
+              name: `${selectedSheets[index]}_generated.sql`,
+              content: ddl,
+            }))
+          );
+        } catch (err) {
+          setError("Error generating DDL.");
+          console.error(err);
+          return;
+        }
       }
+    } catch (err) {
+      console.error("Unexpected error while preparing file for upload:", err);
+      setError("Failed to prepare the file for upload. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const toggleSheetSelection = (sheetName) => {
@@ -577,6 +685,7 @@ export default function Dashboard() {
           { label: "Generate Code", icon: "✨" },
           { label: "Test", icon: "🧪" },
           { label: "Deploy", icon: "🚀" },
+          { label: "Pipeline AI", icon: "🤖" },
         ]}
       />
       {activeTab === 0 && (
@@ -873,25 +982,13 @@ export default function Dashboard() {
             width: "100%",
           }}
         >
-          <DeploymentManager generatedFiles={generatedFiles} />
+          <DeploymentManager generatedFiles={generatedFilesContext} />
         </div>
       )}
+
       {activeTab === 4 && (
-        <div
-          style={{
-            padding: "40px 20px",
-            textAlign: "center",
-            color: "#64748b",
-          }}
-        >
-          <div style={{ fontSize: "40px", marginBottom: "15px" }}>📊</div>
-          <h3 style={{ color: "#334155", margin: "0 0 10px 0" }}>
-            Monitoring Dashboard Coming Soon
-          </h3>
-          <p>
-            Track performance metrics and execution logs for your Snowflake
-            objects.
-          </p>
+        <div style={{ padding: "20px" }}>
+          <DashboardPipelineGenerator />
         </div>
       )}
 

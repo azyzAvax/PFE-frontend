@@ -152,7 +152,11 @@ export default function DeploymentManager({ generatedFiles }) {
       `deploy-${deploymentName.replace(/[^a-zA-Z0-9-]/g, "-")}-${Date.now()}`
     );
     formData.append("description", deploymentDescription);
-
+    formData.append("author", "your_name_or_email");
+    formData.append("context_filter", "default_context");
+    formData.append("project_env", "dev"); // or "prod", depending
+    formData.append("project_name", "my_project");
+    formData.append("stage", "test");
     // Add work item ID if selected
     if (selectedWorkItem) {
       formData.append("work_item_id", selectedWorkItem);
